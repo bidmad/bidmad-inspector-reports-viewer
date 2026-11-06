@@ -1,33 +1,50 @@
 # Bidmad Inspector — 연결 점검 보고서 뷰어
 
-BidmadSDK `InspectorAdapter` 의 연결 점검(linkcheck) 보고서(`linkcheck-*.json`)를 사람이 읽기 좋게 보여 주는 단일 페이지 뷰어입니다.
+BidmadSDK `InspectorAdapter` 연결 점검(linkcheck) 보고서를 퍼블리셔(앱)별로 보여 주는
+단일 페이지 대시보드. GitHub Pages 로 배포된다.
 
 **바로 열기:** https://bidmad.github.io/bidmad-inspector-reports-viewer/
 
 ## 쓰는 법
 
-1. 점검을 켜고 실행합니다(adb 전용):
-   ```bash
-   adb shell setprop debug.bidmad.inspect <앱 패키지명>
-   # 재실행: adb shell setprop debug.bidmad.inspect.run $(date +%s)
-   ```
-2. 기기에서 보고서를 꺼냅니다:
-   ```bash
-   adb pull /storage/emulated/0/Android/data/<앱 패키지명>/files/bidmad_inspector/
-   ```
-3. 위 페이지를 열고 `linkcheck-<시각>.json` 파일을 창에 **끌어다 놓습니다**.
+- **ADOP 내부:** 위 주소를 열면 **퍼블리셔(앱) 목록**이 나온다. 앱을 고르면 **실행 이력**,
+  이력에서 한 건을 고르면 **상세 보고서**로 들어간다.
+- **퍼블리셔에게 공유:** 각 앱 전용 링크 `…/#site/<key>` 를 보낸다. 그 링크는 해당 앱의
+  이력·상세만 보여 주고 전체 목록으로는 가지 않는다. `<key>` 는 보통 앱의 Bidmad siteId
+  (예: `#site/10474`).
 
-보고서는 브라우저 안에서만 열립니다 — 어디에도 업로드되지 않으며, 서버로 전송하지 않습니다.
+## 데이터 흐름
 
-## 내용물
+보고서는 비공개 저장소 **`bidmad/bidmad-inspector-reports`** 에 있고, 이 페이지가
+**읽기 전용 PAT** 로 GitHub Contents API 에서 읽어 온다. 보고서를 드래그&드롭하지 않는다.
 
-- `index.html` — 뷰어(클라이언트 전용, 외부 의존성·네트워크 호출 없음).
+```
+비공개 bidmad-inspector-reports   (reports/<key>/… + index.json)
+        │  읽기 전용 PAT (Contents: Read)
+        ▼
+이 페이지 index.html  →  퍼블리셔 목록 → 실행 이력 → 상세
+```
 
-이 저장소의 `index.html` 은 원본
-`BidmadSDK-AOS/InspectorAdapter/viewer/linkcheck-viewer.html` 의 **사본(미러)** 입니다.
-원본이 바뀌면 수동으로 다시 복사해 갱신합니다.
+## 보안 (중요)
 
-## 보고서 형식
+이 페이지에 심긴 PAT 는 XOR+base64 로 **난독화**돼 있을 뿐 암호화가 아니다. 이 페이지를
+여는 사람은 누구나 토큰을 복원해 비공개 저장소의 **모든** 보고서를 읽을 수 있다. 퍼블리셔
+간 격리는 "공유 링크 수준"일 뿐이다. 그래서 토큰은 반드시:
 
-보고서 JSON 스키마(`bidmad.inspector.linkcheck/2`)는 원본 저장소의
-`InspectorAdapter/viewer/linkcheck-report.schema.md` 를 참고하세요.
+- **fine-grained PAT**, **Contents: Read-only**, 대상 저장소 **`bidmad-inspector-reports` 1개**로만 제한.
+- 절대 쓰기 권한·다른 저장소 권한을 주지 않는다.
+
+## 토큰 심기 / 교체
+
+```bash
+# 읽기 전용 PAT 를 뷰어에 난독화해 삽입 (토큰은 stdin 으로 — 셸 기록에 안 남게)
+python3 tools/embed-token.py index.html < token.txt
+git add index.html && git commit -m "rotate read token" && git push
+```
+
+## 원본
+
+이 저장소의 `index.html` 은
+`BidmadSDK-AOS/InspectorAdapter/viewer/reports-viewer.html` 의 **사본(미러)** 이다.
+원본이 바뀌면 다시 복사하고(`tools/embed-token.py` 로 토큰을 다시 심어) 배포한다.
+보고서 JSON 스키마는 원본 저장소의 `InspectorAdapter/viewer/linkcheck-report.schema.md` 참고.

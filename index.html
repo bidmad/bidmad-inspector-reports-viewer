@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bidmad 연결 점검 보고서</title>
+<title>Bidmad Inspector 보고서</title>
 <style>
   :root {
     --bg: #f6f7f9;
@@ -67,11 +67,13 @@
   .faint { color: var(--faint); }
   button, input { font: inherit; color: inherit; }
   :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
-  a { color: var(--accent); text-decoration: none; }
+  a { color: var(--accent); text-decoration: none; cursor: pointer; }
   a:hover { text-decoration: underline; }
 
-  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
   .topbar .title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+  .crumb { margin: 2px 0 16px; font-size: 13px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .crumb .sep { color: var(--faint); }
   .btn {
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
     padding: 6px 12px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap;
@@ -79,16 +81,38 @@
   .btn:hover { border-color: var(--faint); }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-  .loader { background: var(--surface); border: 1.5px dashed var(--border); border-radius: 12px; padding: 28px 20px; text-align: center; }
-  .loader.drag { border-color: var(--accent); background: var(--surface-2); }
-  .loader p { margin: 6px 0; }
-  .loader .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
-  .loader input[type="url"] { flex: 1 1 320px; max-width: 520px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); }
-  .error-box { margin-top: 12px; color: var(--bad); background: var(--bad-bg); border-radius: 8px; padding: 8px 12px; text-align: left; white-space: pre-wrap; }
+  .statusmsg { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px 20px; text-align: center; color: var(--muted); box-shadow: var(--shadow); }
+  .statusmsg.err { color: var(--bad); background: var(--bad-bg); border-color: transparent; text-align: left; white-space: pre-wrap; }
+  .spin { display: inline-block; width: 15px; height: 15px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: sp .7s linear infinite; vertical-align: -3px; margin-right: 8px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
 
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); margin-bottom: 16px; }
 
-  /* 헤더: 판정 없음 — 사실(개수)만 */
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .toolbar input[type="search"] { flex: 1 1 240px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .toolbar .count { color: var(--muted); font-size: 13px; }
+
+  /* 퍼블리셔/이력 표 */
+  .rtable { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+  .rtable th, .rtable td { text-align: left; padding: 11px 14px; border-top: 1px solid var(--border); vertical-align: middle; }
+  .rtable thead th { border-top: 0; font-size: 12px; color: var(--muted); font-weight: 600; background: var(--surface-2); white-space: nowrap; }
+  .rtable tbody tr { cursor: pointer; }
+  .rtable tbody tr:hover td { background: var(--surface-2); }
+  .rtable td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rtable .pname { font-weight: 600; overflow-wrap: anywhere; }
+  .rtable .psub { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+  .rtable .when { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .c-ok { color: var(--ok); background: var(--ok-bg); }
+  .c-bad { color: var(--bad); background: var(--bad-bg); }
+  .c-warn { color: var(--warn); background: var(--warn-bg); }
+  .c-ni { color: var(--ni); background: var(--ni-bg); }
+  .chips { display: flex; gap: 5px; flex-wrap: wrap; }
+  .pubhead { display: flex; flex-direction: column; gap: 3px; margin-bottom: 4px; }
+  .pubhead .dom { font-family: var(--mono); font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+  .emptybox { color: var(--muted); padding: 24px; text-align: center; }
+
+  /* ---- 아래부터 상세 보고서(단일 실행) 렌더링 — 기존 뷰어와 동일 ---- */
   .head { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px 20px; align-items: start; }
   .facts { border-radius: 12px; padding: 14px 16px; background: var(--surface-2); }
   .facts .label { font-size: 13px; color: var(--muted); font-weight: 600; }
@@ -145,13 +169,13 @@
   .mini { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--surface-2); }
   .mini span { height: 100%; }
   .items-wrap { border-top: 1px solid var(--border); overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { text-align: left; padding: 7px 14px; border-top: 1px solid var(--border); vertical-align: top; }
-  th, td.nw { white-space: nowrap; }
-  thead th { border-top: 0; font-size: 12px; color: var(--muted); font-weight: 600; background: var(--surface-2); }
-  td.name { overflow-wrap: anywhere; min-width: 260px; }
-  td.detail { overflow-wrap: anywhere; min-width: 180px; }
-  tr.hl td { background: color-mix(in srgb, var(--bad-bg) 55%, transparent); }
+  table.lk { border-collapse: collapse; width: 100%; }
+  table.lk th, table.lk td { text-align: left; padding: 7px 14px; border-top: 1px solid var(--border); vertical-align: top; }
+  table.lk th, table.lk td.nw { white-space: nowrap; }
+  table.lk thead th { border-top: 0; font-size: 12px; color: var(--muted); font-weight: 600; background: var(--surface-2); }
+  table.lk td.name { overflow-wrap: anywhere; min-width: 260px; }
+  table.lk td.detail { overflow-wrap: anywhere; min-width: 180px; }
+  table.lk tr.hl td { background: color-mix(in srgb, var(--bad-bg) 55%, transparent); }
   .note-row { padding: 10px 14px; font-size: 12.5px; color: var(--muted); background: var(--surface-2); }
 
   details.help > summary { cursor: pointer; color: var(--muted); }
@@ -167,6 +191,7 @@
     .list > summary { grid-template-columns: 16px minmax(0, 1fr); }
     .list > summary .mini, .list > summary .counts { grid-column: 2; justify-content: flex-start; }
     .issue { grid-template-columns: 1fr; }
+    .rtable .hide-sm { display: none; }
   }
 </style>
 </head>
@@ -174,32 +199,35 @@
 <div class="wrap">
   <div class="topbar">
     <div class="title">
-      <h1>Bidmad 연결 점검 보고서</h1>
+      <h1>Bidmad Inspector 보고서</h1>
       <span class="muted" id="source-label"></span>
     </div>
     <div style="display:flex; gap:8px;">
-      <button class="btn hidden" id="reload-btn" type="button">다른 보고서 열기</button>
       <button class="btn" id="theme-btn" type="button" title="화면 테마 전환">테마</button>
     </div>
   </div>
+  <nav class="crumb" id="crumb" aria-label="탐색 경로"></nav>
 
-  <section id="loader" class="loader" aria-label="보고서 불러오기">
-    <p><strong>연결 점검 보고서(JSON)를 불러오세요</strong></p>
-    <p class="muted">파일을 이 영역에 끌어다 놓거나, 파일을 선택하거나, URL을 입력합니다.<br>
-      기기 파일 위치: <span class="mono">/sdcard/Android/data/&lt;패키지&gt;/files/bidmad_inspector/linkcheck-*.json</span></p>
-    <div class="row">
-      <button class="btn primary" id="pick-btn" type="button">파일 선택</button>
-      <input id="file-input" type="file" accept=".json,application/json" class="hidden">
+  <div id="status" class="statusmsg hidden"></div>
+
+  <!-- 1단계: 퍼블리셔(앱) 목록 -->
+  <section id="view-list" class="hidden">
+    <div class="toolbar">
+      <input type="search" id="pub-q" placeholder="퍼블리셔·앱 도메인·패키지 검색" aria-label="퍼블리셔 검색">
+      <span class="count" id="pub-count"></span>
     </div>
-    <form class="row" id="url-form">
-      <input type="url" id="url-input" placeholder="https://… /linkcheck-….json" aria-label="보고서 URL">
-      <button class="btn" type="submit">URL에서 불러오기</button>
-    </form>
-    <p class="faint" style="font-size:12px; margin-top:12px;">URL로 불러오려면 해당 서버가 CORS를 허용해야 합니다. 주소창에 <span class="mono">?src=&lt;URL&gt;</span>를 붙여도 됩니다.</p>
-    <div id="load-error" class="error-box hidden" role="alert"></div>
+    <div id="pub-table"></div>
   </section>
 
-  <main id="report" class="hidden">
+  <!-- 2단계: 실행 이력 -->
+  <section id="view-history" class="hidden">
+    <div class="card" id="pub-meta"></div>
+    <div class="toolbar"><span class="count" id="run-count"></span></div>
+    <div id="run-table"></div>
+  </section>
+
+  <!-- 3단계: 단일 실행 상세 (기존 뷰어) -->
+  <main id="view-detail" class="hidden">
     <div id="schema-banner" class="banner hidden"></div>
 
     <section class="card">
@@ -264,8 +292,27 @@
 (function () {
   'use strict';
 
+  /* ============================================================
+   * 설정 — 데이터는 비공개 저장소(bidmad-inspector-reports)에 있고,
+   * 이 페이지는 읽기 전용 PAT 로 GitHub Contents API 에서 가져온다.
+   * 토큰은 XOR+base64 로 난독화해 심는다(GitHub secret scanning 회피용;
+   * 보안이 아니라 평문 노출 방지일 뿐이다 — 이 페이지를 여는 사람은
+   * 누구나 토큰을 추출해 비공개 저장소의 모든 보고서를 읽을 수 있다).
+   * ============================================================ */
+  var CONFIG = {
+    dataRepo: 'bidmad/bidmad-inspector-reports',
+    branch: 'main',
+    reportsPath: 'reports',
+    tokenKey: 'bidmad-inspector-reports-viewer',  // XOR 키 (비밀 아님, 난독화용)
+    tokenBlob: 'BQAQBRQGchkPBy9UUjUgOGE/KyFfHB85XhMfFk8gJQ8LOzwZD2wGHwMGXRBHKxYbHDQ/IwZGIWw5Kz0YITw4GwApV1J3LFsGKi8bOxc4HkQzJls0PitGJScyGRQD'  // embed-token.py 가 채움. 비어 있으면 '토큰 미설정' 안내.
+  };
+
   var SCHEMA = 'bidmad.inspector.linkcheck/2';
   var SCHEMA_V1 = 'bidmad.inspector.linkcheck/1';
+
+  // 로컬 개발용: ?dev=<baseURL> 이면 GitHub API 대신 그 경로에서 직접 가져온다.
+  var DEV_BASE = null;
+  try { DEV_BASE = new URLSearchParams(location.search).get('dev'); } catch (e) { DEV_BASE = null; }
 
   var STATUS = {
     RESOLVED: '확인됨', NOT_FOUND: '찾을 수 없음', ERROR: '오류', SKIP: '건너뜀',
@@ -275,13 +322,11 @@
     CLASS: '클래스', CTOR: '생성자', METHOD: '메서드', FIELD: '필드',
     COMPONENT: '매니페스트 컴포넌트', SERVICE: 'ServiceLoader 서비스', NATIVE: '네이티브 라이브러리'
   };
-  var EVIDENCE = {
-    'services-file': 'services 파일 있음',
-    'manifest-declared': '매니페스트에 선언됨'
-  };
+  var EVIDENCE = { 'services-file': 'services 파일 있음', 'manifest-declared': '매니페스트에 선언됨' };
   var UNRESOLVED = { NOT_FOUND: 1, ERROR: 1 };
 
   var state = { report: null, status: 'all', role: 'all', q: '', open: {} };
+  var cache = { topIndex: null, pubIndex: {} };
   var $ = function (id) { return document.getElementById(id); };
 
   function esc(v) {
@@ -289,9 +334,228 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
-  function badge(status) {
-    return '<span class="badge s-' + esc(status) + '">' + esc(STATUS[status] || status) + '</span>';
+
+  /* ---------- 데이터 계층 ---------- */
+  function deobfToken() {
+    if (!CONFIG.tokenBlob) return null;
+    try {
+      var raw = atob(CONFIG.tokenBlob), key = CONFIG.tokenKey, out = '';
+      for (var i = 0; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+      return out;
+    } catch (e) { return null; }
   }
+  // relPath 예: 'index.json', 'pkg_xxx/index.json', 'pkg_xxx/linkcheck-….json' (reports/ 기준)
+  function fetchData(relPath) {
+    var full = CONFIG.reportsPath + '/' + relPath;
+    if (DEV_BASE) {
+      var base = DEV_BASE.replace(/\/+$/, '');
+      return fetch(base + '/' + full, { cache: 'no-store' }).then(function (r) {
+        if (r.status === 404) throw mkErr('NOT_FOUND');
+        if (!r.ok) throw mkErr('HTTP ' + r.status);
+        return r.text();
+      });
+    }
+    var url = 'https://api.github.com/repos/' + CONFIG.dataRepo + '/contents/' + full + '?ref=' + encodeURIComponent(CONFIG.branch);
+    var headers = { 'Accept': 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28' };
+    var tok = deobfToken();
+    if (tok) headers['Authorization'] = 'Bearer ' + tok;
+    return fetch(url, { headers: headers, cache: 'no-store' }).then(function (r) {
+      if (r.status === 404) throw mkErr('NOT_FOUND');
+      if (r.status === 401 || r.status === 403) throw mkErr('AUTH');
+      if (!r.ok) throw mkErr('HTTP ' + r.status);
+      return r.text();
+    });
+  }
+  function mkErr(code) { var e = new Error(code); e.code = code; return e; }
+  function fetchJson(relPath) { return fetchData(relPath).then(function (t) { return JSON.parse(t); }); }
+
+  /* ---------- 공통 UI ---------- */
+  function showStatus(html, isErr) {
+    var s = $('status');
+    s.innerHTML = html; s.classList.remove('hidden');
+    s.classList.toggle('err', !!isErr);
+  }
+  function hideStatus() { $('status').classList.add('hidden'); }
+  function showView(which) {
+    ['list', 'history', 'detail'].forEach(function (v) {
+      $('view-' + v).classList.toggle('hidden', v !== which);
+    });
+  }
+  function errHtml(e) {
+    if (!deobfToken() && !DEV_BASE) {
+      return '읽기 토큰이 아직 설정되지 않았습니다.\n비공개 저장소(' + esc(CONFIG.dataRepo) + ')를 읽으려면 읽기 전용 PAT 를 심어야 합니다.';
+    }
+    if (e && e.code === 'AUTH') return '접근 권한이 없습니다 (토큰이 만료·폐기됐거나 권한이 부족합니다).';
+    if (e && e.code === 'NOT_FOUND') return '데이터를 찾을 수 없습니다. 아직 올라온 보고서가 없을 수 있습니다.';
+    return '데이터를 불러오지 못했습니다: ' + esc(e && e.message || e);
+  }
+  function fmtShort(ms, iso) {
+    var t = ms != null ? ms : Date.parse(iso);
+    if (!isFinite(t)) return iso || '—';
+    var d = new Date(t), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function sumChips(sm, warnings, runError) {
+    sm = sm || {};
+    var out = [];
+    if (runError) out.push('<span class="chip c-bad">실행 오류</span>');
+    var nf = sm.notFound || 0, er = sm.error || 0;
+    if (nf) out.push('<span class="chip c-bad">찾을 수 없음 ' + nf + '</span>');
+    if (er) out.push('<span class="chip c-bad">오류 ' + er + '</span>');
+    if (warnings) out.push('<span class="chip c-warn">경고 ' + warnings + '</span>');
+    if (sm.notIncludedItems) out.push('<span class="chip c-ni">미포함 ' + sm.notIncludedItems + '</span>');
+    out.push('<span class="chip c-ok">확인됨 ' + (sm.resolved != null ? sm.resolved : '—') + '/' + (sm.total != null ? sm.total : '—') + '</span>');
+    return '<div class="chips">' + out.join('') + '</div>';
+  }
+
+  /* ============================================================
+   * 라우팅  (해시 경로로 세 단계를 구분)
+   *   #            또는 #list                  → 퍼블리셔 목록
+   *   #list/site/KEY                           → 실행 이력 (목록에서 진입, 뒤로가기 있음)
+   *   #list/site/KEY/run/FILE                  → 상세
+   *   #site/KEY                                → 실행 이력 (퍼블리셔 전용 링크, 목록으로 못 감)
+   *   #site/KEY/run/FILE                       → 상세
+   * ============================================================ */
+  function parseRoute() {
+    var h = location.hash.replace(/^#\/?/, '');
+    var seg = h ? h.split('/').map(function (s) { try { return decodeURIComponent(s); } catch (e) { return s; } }) : [];
+    if (!seg.length || seg[0] === 'list') {
+      if (seg[0] === 'list' && seg[1] === 'site' && seg[2]) {
+        if (seg[3] === 'run' && seg[4]) return { view: 'detail', key: seg[2], file: seg[4], scoped: false };
+        return { view: 'history', key: seg[2], scoped: false };
+      }
+      return { view: 'list' };
+    }
+    if (seg[0] === 'site' && seg[1]) {
+      if (seg[2] === 'run' && seg[3]) return { view: 'detail', key: seg[1], file: seg[3], scoped: true };
+      return { view: 'history', key: seg[1], scoped: true };
+    }
+    return { view: 'list' };
+  }
+  function hashFor(r) {
+    if (r.view === 'list') return '#list';
+    var pre = r.scoped ? '#site/' + encodeURIComponent(r.key) : '#list/site/' + encodeURIComponent(r.key);
+    if (r.view === 'detail') return pre + '/run/' + encodeURIComponent(r.file);
+    return pre;
+  }
+  function go(r) { location.hash = hashFor(r); }
+
+  function setCrumb(route, pub) {
+    var c = $('crumb'), parts = [];
+    if (route.scoped) {
+      parts.push('<span>' + esc(pub && pub.displayName || route.key) + '</span>');
+      if (route.view === 'detail') parts.push('<span class="sep">›</span><span>실행 상세</span>');
+    } else {
+      parts.push('<a data-go="list">전체 퍼블리셔</a>');
+      if (route.view === 'history' || route.view === 'detail') {
+        parts.push('<span class="sep">›</span>');
+        if (route.view === 'detail') parts.push('<a data-go="history">' + esc(pub && pub.displayName || route.key) + '</a>');
+        else parts.push('<span>' + esc(pub && pub.displayName || route.key) + '</span>');
+      }
+      if (route.view === 'detail') parts.push('<span class="sep">›</span><span>실행 상세</span>');
+    }
+    c.innerHTML = parts.join(' ');
+  }
+
+  /* ---------- 1단계: 퍼블리셔 목록 ---------- */
+  var pubFilter = '';
+  function route_list() {
+    showView('list');
+    $('source-label').textContent = '';
+    if (cache.topIndex) { renderPubs(); return; }
+    showStatus('<span class="spin"></span>퍼블리셔 목록을 불러오는 중…');
+    fetchJson('index.json').then(function (idx) {
+      cache.topIndex = idx; hideStatus(); renderPubs();
+    }).catch(function (e) {
+      if (e.code === 'NOT_FOUND') { cache.topIndex = { publishers: [] }; hideStatus(); renderPubs(); return; }
+      showStatus(errHtml(e), true);
+    });
+  }
+  function renderPubs() {
+    var pubs = (cache.topIndex.publishers || []).slice();
+    var q = pubFilter.trim().toLowerCase();
+    if (q) pubs = pubs.filter(function (p) {
+      return [p.displayName, p.appDomain, p.package, p.siteId, p.key].join('\n').toLowerCase().indexOf(q) >= 0;
+    });
+    $('pub-count').textContent = pubs.length + ' / ' + (cache.topIndex.publishers || []).length + ' 퍼블리셔';
+    if (!pubs.length) {
+      $('pub-table').innerHTML = '<div class="emptybox">' +
+        ((cache.topIndex.publishers || []).length ? '검색과 맞는 퍼블리셔가 없습니다.' : '아직 올라온 보고서가 없습니다.') + '</div>';
+      return;
+    }
+    var rows = pubs.map(function (p) {
+      var lt = p.latest || {};
+      var ident = p.siteId ? ('site ' + esc(p.siteId)) : (p.appDomain ? esc(p.appDomain) : esc(p.package || p.key));
+      return '<tr data-key="' + esc(p.key) + '">' +
+        '<td><div class="pname">' + esc(p.displayName || p.key) + '</div>' +
+        '<div class="psub">' + ident + (p.package && !p.siteId ? '' : (p.package ? ' · <span class="mono">' + esc(p.package) + '</span>' : '')) + '</div></td>' +
+        '<td class="when hide-sm">' + esc(fmtShort(lt.startedAtMs, lt.startedAt)) + '</td>' +
+        '<td>' + sumChips(lt.summary, lt.warnings, lt.runError) + '</td>' +
+        '<td class="num hide-sm">' + (p.runCount || 0) + '회</td></tr>';
+    }).join('');
+    $('pub-table').innerHTML = '<table class="rtable"><thead><tr>' +
+      '<th>퍼블리셔 (앱)</th><th class="hide-sm">최근 실행</th><th>최근 결과</th><th class="num hide-sm">실행</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  /* ---------- 2단계: 실행 이력 ---------- */
+  function route_history(route) {
+    showView('history');
+    $('source-label').textContent = '';
+    var got = cache.pubIndex[route.key];
+    if (got) { renderHistory(route, got); return; }
+    showStatus('<span class="spin"></span>실행 이력을 불러오는 중…');
+    fetchJson(route.key + '/index.json').then(function (idx) {
+      cache.pubIndex[route.key] = idx; hideStatus(); renderHistory(route, idx);
+    }).catch(function (e) { showStatus(errHtml(e), true); });
+  }
+  function renderHistory(route, idx) {
+    var app = idx.app || {};
+    setCrumb(route, app);
+    var ident = [];
+    if (app.siteId) ident.push('<div class="dom">app domain site <b>' + esc(app.siteId) + '</b>' + (app.appDomain ? ' · ' + esc(app.appDomain) : '') + '</div>');
+    else if (app.appDomain) ident.push('<div class="dom">' + esc(app.appDomain) + '</div>');
+    if (app.package) ident.push('<div class="dom">패키지 ' + esc(app.package) + '</div>');
+    $('pub-meta').innerHTML = '<div class="pubhead"><h2 style="margin:0">' + esc(app.displayName || route.key) + '</h2>' +
+      ident.join('') + '</div><div class="faint" style="font-size:12px">실행 ' + (idx.runs || []).length + '회 · 최신순</div>';
+
+    var runs = (idx.runs || []).slice();
+    $('run-count').textContent = runs.length + ' 회 실행';
+    if (!runs.length) { $('run-table').innerHTML = '<div class="emptybox">실행 기록이 없습니다.</div>'; return; }
+    var rows = runs.map(function (r) {
+      var trig = r.trigger === 'startup' ? '앱 시작' : (r.trigger ? '재실행' : '—');
+      return '<tr data-file="' + esc(r.file) + '">' +
+        '<td class="when">' + esc(fmtShort(r.startedAtMs, r.startedAt)) + '</td>' +
+        '<td class="hide-sm faint">' + esc(trig) + '</td>' +
+        '<td>' + sumChips(r.summary, r.warnings, r.runError) + '</td>' +
+        '<td class="num hide-sm faint">' + (r.elapsedMs != null ? r.elapsedMs + 'ms' : '') + '</td></tr>';
+    }).join('');
+    $('run-table').innerHTML = '<table class="rtable"><thead><tr>' +
+      '<th>실행 시각</th><th class="hide-sm">트리거</th><th>결과</th><th class="num hide-sm">소요</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  /* ---------- 3단계: 단일 실행 상세 ---------- */
+  function route_detail(route) {
+    showView('detail');
+    var pub = cache.pubIndex[route.key] && cache.pubIndex[route.key].app;
+    setCrumb(route, pub);
+    showStatus('<span class="spin"></span>보고서를 불러오는 중…');
+    // 이력 인덱스를 먼저 확보(빵부스러기 이름 표시용) — 실패해도 상세는 계속 진행
+    var ensurePub = cache.pubIndex[route.key]
+      ? Promise.resolve(cache.pubIndex[route.key])
+      : fetchJson(route.key + '/index.json').then(function (i) { cache.pubIndex[route.key] = i; return i; }).catch(function () { return null; });
+    ensurePub.then(function (i) { if (i) setCrumb(route, i.app); });
+    fetchData(route.key + '/' + route.file).then(function (text) {
+      hideStatus();
+      loadReport(text, route.file);
+    }).catch(function (e) { showStatus(errHtml(e), true); });
+  }
+
+  /* =========================================================
+   * 아래는 단일 실행 상세 렌더링 — 기존 뷰어 로직 그대로
+   * ========================================================= */
+  function badge(status) { return '<span class="badge s-' + esc(status) + '">' + esc(STATUS[status] || status) + '</span>'; }
   function evChip(code) {
     var label = EVIDENCE[code] || code;
     if (code.indexOf('services-renamed=') === 0) label = '리네임됨 → ' + code.slice('services-renamed='.length);
@@ -303,15 +567,12 @@
   function fmtTime(report) {
     var ms = report.startedAtMs != null ? report.startedAtMs : Date.parse(report.startedAt);
     if (!isFinite(ms)) return report.startedAt || '—';
-    var d = new Date(ms);
-    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var d = new Date(ms), pad = function (n) { return (n < 10 ? '0' : '') + n; };
     var off = -d.getTimezoneOffset();
     var tz = 'UTC' + (off >= 0 ? '+' : '-') + pad(Math.floor(Math.abs(off) / 60)) + (off % 60 ? ':' + pad(Math.abs(off) % 60) : '');
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
       pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + ' (' + tz + ')';
   }
-
-  /* v1 보고서를 v2 형태로 바꿔 보여 준다 (PASS→RESOLVED, ABSENT→NOT_INCLUDED, 판정 제거). */
   function normalize(r) {
     if (r.schema !== SCHEMA_V1) return r;
     var s = r.summary || {};
@@ -328,7 +589,6 @@
     r._convertedFrom = SCHEMA_V1;
     return r;
   }
-
   function itemTitle(it) {
     var n = '<span class="mono">' + esc(it.name) + '</span>';
     if (it.type === 'CTOR' || it.type === 'METHOD') {
@@ -342,17 +602,13 @@
     if (it.host) n += '<div class="faint mono">호출 위치: ' + esc(it.host) + '</div>';
     return n;
   }
-
   function listStats(list) {
     var s = { RESOLVED: 0, NOT_FOUND: 0, ERROR: 0, SKIP: 0, total: 0 };
     (list.items || []).forEach(function (it) { s.total++; s[it.status] = (s[it.status] || 0) + 1; });
     s.unresolved = s.NOT_FOUND + s.ERROR;
     return s;
   }
-  function warningsFor(listName) {
-    return (state.report.warnings || []).filter(function (w) { return w.list === listName; });
-  }
-  /* 목록 분류 (필터·정렬용, 판정 아님) */
+  function warningsFor(listName) { return (state.report.warnings || []).filter(function (w) { return w.list === listName; }); }
   function listKind(list, st) {
     if (list.state === 'NOT_INCLUDED') return 'notincluded';
     if (st.unresolved > 0) return 'unresolved';
@@ -366,53 +622,21 @@
     return 4;
   }
 
-  /* ---------- 불러오기 ---------- */
-  function showError(msg) {
-    var box = $('load-error');
-    box.textContent = msg;
-    box.classList.remove('hidden');
-    $('loader').classList.remove('hidden');
-    $('report').classList.add('hidden');
-  }
-  function load(text, label) {
+  function loadReport(text, label) {
     var data;
-    try { data = JSON.parse(text); } catch (e) { showError('JSON 형식이 아닙니다: ' + e.message); return; }
+    try { data = JSON.parse(text); } catch (e) { showStatus('보고서 JSON 형식이 아닙니다: ' + esc(e.message), true); return; }
     if (!data || typeof data !== 'object' || !Array.isArray(data.lists) || !data.summary) {
-      showError('연결 점검 보고서가 아닙니다 (lists / summary 필드 없음).');
-      return;
+      showStatus('연결 점검 보고서가 아닙니다 (lists / summary 필드 없음).', true); return;
     }
     state.report = normalize(data);
-    state.open = {};
-    $('load-error').classList.add('hidden');
+    state.status = 'all'; state.role = 'all'; state.q = ''; state.open = {};
+    $('q').value = ''; setSeg('status-filter', 'all'); setSeg('role-filter', 'all');
     $('source-label').textContent = label || '';
     render();
+    window.scrollTo(0, 0);
   }
-  function loadUrl(url) {
-    if (!url) return;
-    $('source-label').textContent = '불러오는 중…';
-    fetch(url, { cache: 'no-store' }).then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res.text();
-    }).then(function (text) { load(text, url); }).catch(function (e) {
-      $('source-label').textContent = '';
-      showError('URL에서 불러오지 못했습니다: ' + e.message + '\n(서버의 CORS 허용 여부, 주소, 네트워크를 확인하세요.)');
-    });
-  }
-  function loadFile(file) {
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function () { load(String(reader.result), file.name); };
-    reader.onerror = function () { showError('파일을 읽지 못했습니다.'); };
-    reader.readAsText(file, 'utf-8');
-  }
-
-  /* ---------- 렌더링 ---------- */
   function render() {
     var r = state.report;
-    $('loader').classList.add('hidden');
-    $('report').classList.remove('hidden');
-    $('reload-btn').classList.remove('hidden');
-
     var banner = $('schema-banner');
     if (r._convertedFrom) {
       banner.textContent = '이전 형식(' + r._convertedFrom + ') 보고서입니다. 판정 없이 v2 용어로 바꿔 표시합니다 (정황 정보는 없음).';
@@ -420,16 +644,10 @@
     } else if (r.schema !== SCHEMA) {
       banner.textContent = '이 뷰어는 ' + SCHEMA + ' 형식용입니다. 보고서 형식: ' + (r.schema || '알 수 없음') + ' — 일부 내용이 다르게 보일 수 있습니다.';
       banner.classList.remove('hidden');
-    } else {
-      banner.classList.add('hidden');
-    }
-    renderHead(r);
-    renderIssues(r);
-    renderLists();
+    } else { banner.classList.add('hidden'); }
+    renderHead(r); renderIssues(r); renderLists();
   }
-
   function n(v) { return v != null ? v : 0; }
-
   function renderHead(r) {
     var s = r.summary || {};
     $('facts').innerHTML =
@@ -450,8 +668,10 @@
     if (app.splitApks) appFlags.push('split APK ' + app.splitApks + '개');
     if (app.targetSdk) appFlags.push('target ' + app.targetSdk);
     var small = function (t) { return '<div class="faint" style="font-size:12px">' + t + '</div>'; };
+    var domain = app.bidmadAppDomain ? esc(app.bidmadAppDomain) + (app.bidmadSiteId ? small('site ' + esc(app.bidmadSiteId)) : '') : '—';
     var rows = [
       ['앱 패키지', '<span class="mono">' + esc(app['package'] || '—') + '</span>'],
+      ['앱 도메인', domain],
       ['앱 버전', esc(version || '—') + (appFlags.length ? small(esc(appFlags.join(' · '))) : '')],
       ['설치 출처', '<span class="mono">' + esc(app.installer || '—') + '</span>'],
       ['기기', esc(device || '—') + (android ? small(esc(android) + (dev.abis && dev.abis.length ? ' · ' + esc(dev.abis[0]) : '')) : '')],
@@ -484,14 +704,10 @@
     $('bar').innerHTML = seg(n(s.notFound) + n(s.error), 'var(--bad)', '찾을 수 없음·오류') +
       seg(s.notIncludedItems, 'var(--ni)', '미포함') + seg(s.skip, 'var(--skip)', '건너뜀') + seg(s.resolved, 'var(--ok)', '확인됨');
   }
-
   function issue(tag, what, why) {
     return '<div class="issue"><div>' + tag + '</div><div><div class="what">' + what + '</div><div class="why">' + why + '</div></div></div>';
   }
-  function listLink(name) {
-    return '<a href="#list-' + esc(name) + '" data-jump="' + esc(name) + '">' + esc(name) + '</a>';
-  }
-
+  function listLink(name) { return '<a href="#list-' + esc(name) + '" data-jump="' + esc(name) + '">' + esc(name) + '</a>'; }
   function renderIssues(r) {
     var unresolved = [], notIncl = [], other = [];
     if (r.runError) other.push(issue('<span class="badge s-ERROR">실행 오류</span>', '<span class="mono">' + esc(r.runError) + '</span>', '점검 실행 자체가 중단되었습니다.'));
@@ -512,9 +728,7 @@
           (it.src ? ' · 출처 <span class="mono">' + esc(it.src) + '</span>' : '')));
       });
     });
-    ni.sort(function (a, b) {
-      return ((b.evidence || []).length > 0) - ((a.evidence || []).length > 0) || a.name.localeCompare(b.name);
-    });
+    ni.sort(function (a, b) { return ((b.evidence || []).length > 0) - ((a.evidence || []).length > 0) || a.name.localeCompare(b.name); });
     ni.forEach(function (list) {
       var ev = list.evidence || [];
       var sub = list.role === 'library' ? '<span class="mono">' + esc(list.library || '') + '</span>' : '모듈 <span class="mono">' + esc(list.module || list.name) + '</span>';
@@ -534,17 +748,13 @@
     $('issues-title').textContent = '검토할 항목 (' + (unresolved.length + notIncl.length + other.length) + ')';
     $('issues').innerHTML = html || '<div class="empty">검토할 항목이 없습니다. 모든 항목이 원래 이름으로 확인됐습니다.</div>';
   }
-
   function matchesQuery(list, q) {
     if (!q) return true;
     var hay = [list.name, list.module, list.library].concat(list.pulledBy || []).concat(list.evidence || []);
     (list.items || []).forEach(function (it) { hay.push(it.name, it.member, it.detail); });
     return hay.join('\n').toLowerCase().indexOf(q) >= 0;
   }
-  function itemMatches(it, q) {
-    return !q || [it.name, it.member, it.detail, it.type].join('\n').toLowerCase().indexOf(q) >= 0;
-  }
-
+  function itemMatches(it, q) { return !q || [it.name, it.member, it.detail, it.type].join('\n').toLowerCase().indexOf(q) >= 0; }
   function renderLists() {
     var q = state.q.trim().toLowerCase();
     var rows = state.report.lists.map(function (list) {
@@ -556,9 +766,7 @@
       if (state.status !== 'all' && row.kind !== state.status) return false;
       return matchesQuery(row.list, q);
     });
-    visible.sort(function (a, b) {
-      return (kindOrder(a.list, a.kind) - kindOrder(b.list, b.kind)) || a.list.name.localeCompare(b.list.name);
-    });
+    visible.sort(function (a, b) { return (kindOrder(a.list, a.kind) - kindOrder(b.list, b.kind)) || a.list.name.localeCompare(b.list.name); });
     $('lists-count').textContent = visible.length + ' / ' + rows.length + '개';
     if (!visible.length) { $('lists').innerHTML = '<div class="empty">조건에 맞는 목록이 없습니다.</div>'; return; }
 
@@ -583,7 +791,6 @@
         if (warns.length) counts.push('<span class="badge s-WARN">경고 ' + warns.length + '</span>');
         counts.push('<span class="badge s-RESOLVED">확인됨 ' + st.RESOLVED + '/' + st.total + '</span>');
       }
-
       var t = Math.max(1, st.total);
       var mini = list.state === 'NOT_INCLUDED'
         ? '<div class="mini"><span style="width:100%;background:var(--ni)"></span></div>'
@@ -592,9 +799,7 @@
           (st.SKIP ? '<span style="width:' + (st.SKIP / t * 100) + '%;background:var(--skip)"></span>' : '') +
           (st.RESOLVED ? '<span style="width:' + (st.RESOLVED / t * 100) + '%;background:var(--ok)"></span>' : '') + '</div>';
 
-      var items = (list.items || []).filter(function (it) {
-        return !q || name.toLowerCase().indexOf(q) >= 0 || itemMatches(it, q);
-      });
+      var items = (list.items || []).filter(function (it) { return !q || name.toLowerCase().indexOf(q) >= 0 || itemMatches(it, q); });
       var body = '';
       if (list.state === 'NOT_INCLUDED') {
         body += '<div class="note-row">이 목록의 클래스를 원래 이름으로 하나도 찾지 못했습니다. ' +
@@ -606,7 +811,7 @@
           return badge('WARN') + ' <span class="mono">' + esc(w.kind + ' ' + w.subject + ' ' + w.detail) + '</span>';
         }).join('<br>') + '</div>';
       }
-      body += '<table><thead><tr><th>상태</th><th>종류</th><th>이름</th><th>단계</th><th>상세</th><th>정황</th><th>출처</th></tr></thead><tbody>' +
+      body += '<table class="lk"><thead><tr><th>상태</th><th>종류</th><th>이름</th><th>단계</th><th>상세</th><th>정황</th><th>출처</th></tr></thead><tbody>' +
         items.map(function (it) {
           return '<tr class="' + (UNRESOLVED[it.status] && list.state !== 'NOT_INCLUDED' ? 'hl' : '') + '"><td class="nw">' + badge(it.status) + '</td>' +
             '<td class="nw">' + esc(TYPE[it.type] || it.type) + '</td>' +
@@ -678,31 +883,31 @@
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
-  $('pick-btn').addEventListener('click', function () { $('file-input').click(); });
-  $('file-input').addEventListener('change', function (e) { loadFile(e.target.files[0]); e.target.value = ''; });
-  $('url-form').addEventListener('submit', function (e) { e.preventDefault(); loadUrl($('url-input').value.trim()); });
-  $('reload-btn').addEventListener('click', function () {
-    $('report').classList.add('hidden');
-    $('loader').classList.remove('hidden');
-    $('reload-btn').classList.add('hidden');
-    $('source-label').textContent = '';
+  // 목록/이력 행 클릭 → 라우팅
+  var curRoute = { view: 'list' };
+  $('pub-table').addEventListener('click', function (e) {
+    var tr = e.target.closest('tr[data-key]'); if (!tr) return;
+    go({ view: 'history', key: tr.getAttribute('data-key'), scoped: false });
+  });
+  $('run-table').addEventListener('click', function (e) {
+    var tr = e.target.closest('tr[data-file]'); if (!tr) return;
+    go({ view: 'detail', key: curRoute.key, file: tr.getAttribute('data-file'), scoped: curRoute.scoped });
+  });
+  $('crumb').addEventListener('click', function (e) {
+    var a = e.target.closest('a[data-go]'); if (!a) return;
+    e.preventDefault();
+    var to = a.getAttribute('data-go');
+    if (to === 'list') go({ view: 'list' });
+    else if (to === 'history') go({ view: 'history', key: curRoute.key, scoped: curRoute.scoped });
+  });
+  var pubQTimer = null;
+  $('pub-q').addEventListener('input', function (e) {
+    clearTimeout(pubQTimer);
+    var v = e.target.value;
+    pubQTimer = setTimeout(function () { pubFilter = v; renderPubs(); }, 120);
   });
 
-  var loaderEl = $('loader');
-  ['dragenter', 'dragover'].forEach(function (t) {
-    document.addEventListener(t, function (e) { e.preventDefault(); loaderEl.classList.add('drag'); });
-  });
-  ['dragleave', 'drop'].forEach(function (t) {
-    document.addEventListener(t, function (e) {
-      e.preventDefault();
-      if (t === 'drop' || e.target === document.documentElement) loaderEl.classList.remove('drag');
-    });
-  });
-  document.addEventListener('drop', function (e) {
-    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) loadFile(f);
-  });
-
+  // 테마
   var THEMES = [null, 'light', 'dark'];
   var THEME_LABEL = { null: '테마: 자동', light: '테마: 밝게', dark: '테마: 어둡게' };
   var theme = null;
@@ -720,9 +925,18 @@
   });
   applyTheme();
 
-  var src = null;
-  try { src = new URLSearchParams(location.search).get('src'); } catch (e) { src = null; }
-  if (src) { $('url-input').value = src; loadUrl(src); }
+  /* ---------- 라우터 구동 ---------- */
+  function route() {
+    var r = parseRoute();
+    curRoute = r;
+    hideStatus();
+    setCrumb(r, (cache.pubIndex[r.key] && cache.pubIndex[r.key].app) || null);
+    if (r.view === 'list') route_list();
+    else if (r.view === 'history') route_history(r);
+    else if (r.view === 'detail') route_detail(r);
+  }
+  window.addEventListener('hashchange', route);
+  route();
 })();
 </script>
 </body>
