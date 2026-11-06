@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bidmad 연결 점검 보고서</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #f1f3f6;
+    --border: #e1e4ea;
+    --text: #1b1f27;
+    --muted: #5d6676;
+    --faint: #8a93a3;
+    --ok: #1f8a4c;
+    --ok-bg: #e5f5ec;
+    --bad: #c8322f;
+    --bad-bg: #fdecea;
+    --warn: #a86400;
+    --warn-bg: #fdf2dc;
+    --skip: #5d6676;
+    --skip-bg: #eceff3;
+    --ni: #6d3fc0;
+    --ni-bg: #f0eafb;
+    --ev: #0b6e8a;
+    --ev-bg: #e2f3f8;
+    --accent: #2f5bd3;
+    --focus: #2f5bd3;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .06);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111318; --surface: #191c23; --surface-2: #20242d; --border: #2c313c;
+      --text: #e8eaef; --muted: #a3abba; --faint: #7a8392;
+      --ok: #4cc382; --ok-bg: #15301f; --bad: #ff7b72; --bad-bg: #3a1716;
+      --warn: #f0b44c; --warn-bg: #352812; --skip: #a3abba; --skip-bg: #262a33;
+      --ni: #b99cff; --ni-bg: #2a2140; --ev: #6fd0ea; --ev-bg: #13303a;
+      --accent: #7aa2ff; --focus: #7aa2ff;
+      --shadow: none; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111318; --surface: #191c23; --surface-2: #20242d; --border: #2c313c;
+    --text: #e8eaef; --muted: #a3abba; --faint: #7a8392;
+    --ok: #4cc382; --ok-bg: #15301f; --bad: #ff7b72; --bad-bg: #3a1716;
+    --warn: #f0b44c; --warn-bg: #352812; --skip: #a3abba; --skip-bg: #262a33;
+    --ni: #b99cff; --ni-bg: #2a2140; --ev: #6fd0ea; --ev-bg: #13303a;
+    --accent: #7aa2ff; --focus: #7aa2ff;
+    --shadow: none; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .muted { color: var(--muted); }
+  .faint { color: var(--faint); }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .topbar .title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+  .btn {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 12px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--faint); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .loader { background: var(--surface); border: 1.5px dashed var(--border); border-radius: 12px; padding: 28px 20px; text-align: center; }
+  .loader.drag { border-color: var(--accent); background: var(--surface-2); }
+  .loader p { margin: 6px 0; }
+  .loader .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+  .loader input[type="url"] { flex: 1 1 320px; max-width: 520px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); }
+  .error-box { margin-top: 12px; color: var(--bad); background: var(--bad-bg); border-radius: 8px; padding: 8px 12px; text-align: left; white-space: pre-wrap; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); margin-bottom: 16px; }
+
+  /* 헤더: 판정 없음 — 사실(개수)만 */
+  .head { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px 20px; align-items: start; }
+  .facts { border-radius: 12px; padding: 14px 16px; background: var(--surface-2); }
+  .facts .label { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .facts .line { margin-top: 6px; font-size: 14px; }
+  .facts .line b { font-variant-numeric: tabular-nums; }
+  .facts .note { margin-top: 8px; font-size: 12px; color: var(--faint); }
+  .meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px 20px; margin: 0; }
+  .meta dt { font-size: 12px; color: var(--muted); }
+  .meta dd { margin: 0; overflow-wrap: anywhere; }
+
+  .tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 16px; }
+  .tile { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface); text-align: left; cursor: pointer; }
+  .tile:hover { border-color: var(--faint); }
+  .tile.active { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .tile .n { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tile .k { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-2); margin-top: 14px; }
+  .bar span { display: block; height: 100%; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .s-RESOLVED { color: var(--ok); background: var(--ok-bg); }
+  .s-NOT_FOUND, .s-ERROR { color: var(--bad); background: var(--bad-bg); }
+  .s-WARN, .s-TIMEOUT { color: var(--warn); background: var(--warn-bg); }
+  .s-SKIP { color: var(--skip); background: var(--skip-bg); }
+  .s-NOT_INCLUDED { color: var(--ni); background: var(--ni-bg); }
+  .ev { display: inline-flex; align-items: center; border-radius: 4px; padding: 0 6px; font-size: 11.5px; font-weight: 600; color: var(--ev); background: var(--ev-bg); white-space: nowrap; font-family: var(--mono); }
+  .role { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+
+  .issue { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .issue:first-of-type { border-top: 0; }
+  .issue .what { overflow-wrap: anywhere; }
+  .issue .why { font-size: 12.5px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+  .group-title { font-size: 12.5px; font-weight: 700; color: var(--muted); margin: 14px 0 2px; }
+  .group-title:first-child { margin-top: 0; }
+  .empty { color: var(--muted); padding: 6px 0; }
+
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button { border: 0; background: none; padding: 5px 10px; cursor: pointer; border-right: 1px solid var(--border); }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); font-weight: 600; }
+  .filters input[type="search"] { flex: 1 1 220px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+
+  .list { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; background: var(--surface); overflow: hidden; }
+  .list > summary { list-style: none; cursor: pointer; padding: 10px 14px; display: grid; grid-template-columns: 16px minmax(0, 1fr) 160px auto; gap: 12px; align-items: center; }
+  .list > summary::-webkit-details-marker { display: none; }
+  .chev { transition: transform .15s; color: var(--faint); }
+  .list[open] .chev { transform: rotate(90deg); }
+  .lname { min-width: 0; }
+  .lname .n { font-weight: 600; overflow-wrap: anywhere; }
+  .lname .sub { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+  .counts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+  .mini { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--surface-2); }
+  .mini span { height: 100%; }
+  .items-wrap { border-top: 1px solid var(--border); overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 7px 14px; border-top: 1px solid var(--border); vertical-align: top; }
+  th, td.nw { white-space: nowrap; }
+  thead th { border-top: 0; font-size: 12px; color: var(--muted); font-weight: 600; background: var(--surface-2); }
+  td.name { overflow-wrap: anywhere; min-width: 260px; }
+  td.detail { overflow-wrap: anywhere; min-width: 180px; }
+  tr.hl td { background: color-mix(in srgb, var(--bad-bg) 55%, transparent); }
+  .note-row { padding: 10px 14px; font-size: 12.5px; color: var(--muted); background: var(--surface-2); }
+
+  details.help > summary { cursor: pointer; color: var(--muted); }
+  .help dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 10px 0 0; }
+  .help dt { font-weight: 600; }
+  .help dd { margin: 0; color: var(--muted); }
+  .hidden { display: none !important; }
+  .banner { border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; background: var(--warn-bg); color: var(--warn); }
+
+  @media (max-width: 760px) {
+    .head { grid-template-columns: 1fr; }
+    .tiles { grid-template-columns: repeat(3, 1fr); }
+    .list > summary { grid-template-columns: 16px minmax(0, 1fr); }
+    .list > summary .mini, .list > summary .counts { grid-column: 2; justify-content: flex-start; }
+    .issue { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="title">
+      <h1>Bidmad 연결 점검 보고서</h1>
+      <span class="muted" id="source-label"></span>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn hidden" id="reload-btn" type="button">다른 보고서 열기</button>
+      <button class="btn" id="theme-btn" type="button" title="화면 테마 전환">테마</button>
+    </div>
+  </div>
+
+  <section id="loader" class="loader" aria-label="보고서 불러오기">
+    <p><strong>연결 점검 보고서(JSON)를 불러오세요</strong></p>
+    <p class="muted">파일을 이 영역에 끌어다 놓거나, 파일을 선택하거나, URL을 입력합니다.<br>
+      기기 파일 위치: <span class="mono">/sdcard/Android/data/&lt;패키지&gt;/files/bidmad_inspector/linkcheck-*.json</span></p>
+    <div class="row">
+      <button class="btn primary" id="pick-btn" type="button">파일 선택</button>
+      <input id="file-input" type="file" accept=".json,application/json" class="hidden">
+    </div>
+    <form class="row" id="url-form">
+      <input type="url" id="url-input" placeholder="https://… /linkcheck-….json" aria-label="보고서 URL">
+      <button class="btn" type="submit">URL에서 불러오기</button>
+    </form>
+    <p class="faint" style="font-size:12px; margin-top:12px;">URL로 불러오려면 해당 서버가 CORS를 허용해야 합니다. 주소창에 <span class="mono">?src=&lt;URL&gt;</span>를 붙여도 됩니다.</p>
+    <div id="load-error" class="error-box hidden" role="alert"></div>
+  </section>
+
+  <main id="report" class="hidden">
+    <div id="schema-banner" class="banner hidden"></div>
+
+    <section class="card">
+      <div class="head">
+        <div class="facts" id="facts"></div>
+        <dl class="meta" id="meta"></dl>
+      </div>
+      <div class="tiles" id="tiles"></div>
+      <div class="bar" id="bar" aria-hidden="true"></div>
+    </section>
+
+    <section class="card">
+      <h2 id="issues-title">검토할 항목</h2>
+      <div id="issues"></div>
+    </section>
+
+    <section class="card">
+      <h2>점검 목록 <span class="muted" id="lists-count" style="font-weight:400"></span></h2>
+      <div class="filters">
+        <div class="seg" role="group" aria-label="상태 필터" id="status-filter">
+          <button type="button" data-v="all" aria-pressed="true">전체</button>
+          <button type="button" data-v="unresolved" aria-pressed="false">찾을 수 없음·오류</button>
+          <button type="button" data-v="notincluded" aria-pressed="false">미포함</button>
+          <button type="button" data-v="attention" aria-pressed="false">경고·건너뜀</button>
+          <button type="button" data-v="resolved" aria-pressed="false">모두 확인됨</button>
+        </div>
+        <div class="seg" role="group" aria-label="목록 종류" id="role-filter">
+          <button type="button" data-v="all" aria-pressed="true">모두</button>
+          <button type="button" data-v="sdk" aria-pressed="false">SDK 모듈</button>
+          <button type="button" data-v="library" aria-pressed="false">라이브러리</button>
+        </div>
+        <input type="search" id="q" placeholder="클래스·목록·모듈 이름 검색" aria-label="검색">
+        <button class="btn" type="button" id="expand-all">모두 펼치기</button>
+        <button class="btn" type="button" id="collapse-all">모두 접기</button>
+      </div>
+      <div id="lists"></div>
+    </section>
+
+    <section class="card">
+      <details class="help">
+        <summary>결과 읽는 법</summary>
+        <dl>
+          <dt>판정</dt><dd>이 보고서는 성공·실패를 판정하지 않습니다. 모든 Bidmad 모듈이 연동됐다고 가정하고 점검한 사실만 보여 주며, 판단은 보고서를 읽는 사람이 합니다.</dd>
+          <dt><span class="badge s-RESOLVED">확인됨</span></dt><dd>원래 이름으로 해석됨 (L2 항목은 클래스 초기화까지, L3 항목은 실제 호출까지 성공 — 상세의 <span class="mono">l3=ok</span>, 기대값과 다르면 <span class="mono">l3-unexpected</span>).</dd>
+          <dt><span class="badge s-NOT_FOUND">찾을 수 없음</span></dt><dd>원래 이름으로 해석되지 않음 — 클래스·멤버·서비스 파일·구현체·.so 가 없거나 이름이 바뀜.</dd>
+          <dt><span class="badge s-ERROR">오류</span></dt><dd>이름은 찾았지만 클래스 초기화(L2) 또는 실제 호출(L3)에서 예외가 났거나 점검기 자체가 예외를 냄. L3 상세: <span class="mono">l3-threw</span>(대상 코드가 던짐 — 실행 시 크래시 신호), <span class="mono">l3-link</span>(호출 링크 실패), <span class="mono">l3-args</span>(점검기 인자·스펙 문제).</dd>
+          <dt><span class="badge s-NOT_INCLUDED">미포함</span></dt><dd>목록의 모든 항목이 원래 이름으로 클래스를 찾지 못함. 기기에서는 <b>연동하지 않음</b>과 <b>연동했지만 이름이 바뀜</b>을 구분할 수 없습니다. 확인된 것으로 세지 않으며, 아래 정황을 보고 판단하세요.</dd>
+          <dt><span class="ev">services-file</span></dt><dd>정황: <span class="mono">META-INF/services/&lt;원래 인터페이스 이름&gt;</span> 파일이 앱에 있음 → 라이브러리는 들어 있고 인터페이스 이름이 바뀌었을 가능성이 큼 (예: AppSuit 의 Ktor).</dd>
+          <dt><span class="ev">manifest-declared</span></dt><dd>정황: 설치된 앱 매니페스트에 원래 이름으로 선언돼 있음 → 컴포넌트 클래스 이름만 바뀌었을 가능성이 큼 (실행 시 크래시 위험).</dd>
+          <dt><span class="ev">linked-as=…</span></dt><dd>정황: 점검기가 컴파일 시점에 연결한 bidmad 클래스가 다른 이름으로 해석됨 → bidmad 는 들어 있고 이름이 바뀜.</dd>
+          <dt><span class="ev">services-renamed=…</span></dt><dd>정황: 원래 이름의 services 파일은 없지만 다른 services 파일의 <b>내용</b>이 이 항목의 구현체를 가리킴 → 라이브러리는 들어 있고 SPI 인터페이스 이름이 그 이름으로 바뀜 (R8/AppSuit). 뒤의 값이 바뀐 인터페이스 이름.</dd>
+          <dt><span class="badge s-WARN">경고</span></dt><dd>LOADER: 앱 기본 클래스 로더가 아닌 로더에서 로드됨. SPLIT: 같은 패키지 클래스가 여러 로더로 갈라짐. SPI_UNRESOLVED: META-INF/services 가 선언한 구현체를 원래 이름으로 로드할 수 없음 → ServiceLoader 가 provider 를 못 만들어 그 경로 실행 시 크래시 위험.</dd>
+          <dt><span class="badge s-SKIP">건너뜀</span></dt><dd>지원하지 않는 항목이거나 10초 점검 예산을 넘겨 점검하지 못함.</dd>
+          <dt>L1 / L2 / L3</dt><dd>L1: 이름 해석과 멤버 조회(읽기 전용). L2: 클래스 초기화까지 실행. L3: 멤버를 목록이 준 인자로 실제 호출 — 파트너 SDK 진입점이 난독화 후에도 호출·동작하는지 확인. 반환값은 타입·요약만 남기고 원문은 기록하지 않음.</dd>
+        </dl>
+      </details>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SCHEMA = 'bidmad.inspector.linkcheck/2';
+  var SCHEMA_V1 = 'bidmad.inspector.linkcheck/1';
+
+  var STATUS = {
+    RESOLVED: '확인됨', NOT_FOUND: '찾을 수 없음', ERROR: '오류', SKIP: '건너뜀',
+    WARN: '경고', NOT_INCLUDED: '미포함', TIMEOUT: '시간 초과'
+  };
+  var TYPE = {
+    CLASS: '클래스', CTOR: '생성자', METHOD: '메서드', FIELD: '필드',
+    COMPONENT: '매니페스트 컴포넌트', SERVICE: 'ServiceLoader 서비스', NATIVE: '네이티브 라이브러리'
+  };
+  var EVIDENCE = {
+    'services-file': 'services 파일 있음',
+    'manifest-declared': '매니페스트에 선언됨'
+  };
+  var UNRESOLVED = { NOT_FOUND: 1, ERROR: 1 };
+
+  var state = { report: null, status: 'all', role: 'all', q: '', open: {} };
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function badge(status) {
+    return '<span class="badge s-' + esc(status) + '">' + esc(STATUS[status] || status) + '</span>';
+  }
+  function evChip(code) {
+    var label = EVIDENCE[code] || code;
+    if (code.indexOf('services-renamed=') === 0) label = '리네임됨 → ' + code.slice('services-renamed='.length);
+    else if (code.indexOf('linked-as=') === 0) label = 'linked-as ' + code.slice('linked-as='.length);
+    return '<span class="ev" title="' + esc(code) + '">' + esc(label) + '</span>';
+  }
+  function evChips(list) { return (list || []).map(evChip).join(' '); }
+  function simple(name) { var s = String(name); var i = s.lastIndexOf('.'); return i >= 0 ? s.slice(i + 1) : s; }
+  function fmtTime(report) {
+    var ms = report.startedAtMs != null ? report.startedAtMs : Date.parse(report.startedAt);
+    if (!isFinite(ms)) return report.startedAt || '—';
+    var d = new Date(ms);
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var off = -d.getTimezoneOffset();
+    var tz = 'UTC' + (off >= 0 ? '+' : '-') + pad(Math.floor(Math.abs(off) / 60)) + (off % 60 ? ':' + pad(Math.abs(off) % 60) : '');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+      pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + ' (' + tz + ')';
+  }
+
+  /* v1 보고서를 v2 형태로 바꿔 보여 준다 (PASS→RESOLVED, ABSENT→NOT_INCLUDED, 판정 제거). */
+  function normalize(r) {
+    if (r.schema !== SCHEMA_V1) return r;
+    var s = r.summary || {};
+    r.summary = {
+      total: s.total, resolved: s.pass, notFound: s.notFound, error: s.error, skip: s.skip, warn: s.warn,
+      notIncludedLists: s.absentLists, notIncludedItems: s.absentItems, notIncludedListsWithEvidence: 0,
+      lists: s.lists, timedOut: s.timedOut
+    };
+    r.lists.forEach(function (l) {
+      if (l.state === 'ABSENT') l.state = 'NOT_INCLUDED';
+      l.evidence = l.evidence || [];
+      (l.items || []).forEach(function (it) { if (it.status === 'PASS') it.status = 'RESOLVED'; });
+    });
+    r._convertedFrom = SCHEMA_V1;
+    return r;
+  }
+
+  function itemTitle(it) {
+    var n = '<span class="mono">' + esc(it.name) + '</span>';
+    if (it.type === 'CTOR' || it.type === 'METHOD') {
+      var params = (it.params || []).map(simple).join(', ');
+      var member = it.type === 'METHOD' ? '#' + esc(it.member || '') : '';
+      n = '<span class="mono">' + esc(it.name) + member + '(' + esc(params) + ')</span>';
+    } else if (it.type === 'FIELD') {
+      n = '<span class="mono">' + esc(it.name) + '#' + esc(it.member || '') + '</span>';
+    }
+    if (it.impls && it.impls.length) n += '<div class="faint mono">구현체: ' + it.impls.map(esc).join(', ') + '</div>';
+    if (it.host) n += '<div class="faint mono">호출 위치: ' + esc(it.host) + '</div>';
+    return n;
+  }
+
+  function listStats(list) {
+    var s = { RESOLVED: 0, NOT_FOUND: 0, ERROR: 0, SKIP: 0, total: 0 };
+    (list.items || []).forEach(function (it) { s.total++; s[it.status] = (s[it.status] || 0) + 1; });
+    s.unresolved = s.NOT_FOUND + s.ERROR;
+    return s;
+  }
+  function warningsFor(listName) {
+    return (state.report.warnings || []).filter(function (w) { return w.list === listName; });
+  }
+  /* 목록 분류 (필터·정렬용, 판정 아님) */
+  function listKind(list, st) {
+    if (list.state === 'NOT_INCLUDED') return 'notincluded';
+    if (st.unresolved > 0) return 'unresolved';
+    if (list.state === 'TIMEOUT' || st.SKIP > 0 || warningsFor(list.name).length) return 'attention';
+    return 'resolved';
+  }
+  function kindOrder(list, kind) {
+    if (kind === 'unresolved') return 0;
+    if (kind === 'notincluded') return (list.evidence && list.evidence.length) ? 1 : 2;
+    if (kind === 'attention') return 3;
+    return 4;
+  }
+
+  /* ---------- 불러오기 ---------- */
+  function showError(msg) {
+    var box = $('load-error');
+    box.textContent = msg;
+    box.classList.remove('hidden');
+    $('loader').classList.remove('hidden');
+    $('report').classList.add('hidden');
+  }
+  function load(text, label) {
+    var data;
+    try { data = JSON.parse(text); } catch (e) { showError('JSON 형식이 아닙니다: ' + e.message); return; }
+    if (!data || typeof data !== 'object' || !Array.isArray(data.lists) || !data.summary) {
+      showError('연결 점검 보고서가 아닙니다 (lists / summary 필드 없음).');
+      return;
+    }
+    state.report = normalize(data);
+    state.open = {};
+    $('load-error').classList.add('hidden');
+    $('source-label').textContent = label || '';
+    render();
+  }
+  function loadUrl(url) {
+    if (!url) return;
+    $('source-label').textContent = '불러오는 중…';
+    fetch(url, { cache: 'no-store' }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.text();
+    }).then(function (text) { load(text, url); }).catch(function (e) {
+      $('source-label').textContent = '';
+      showError('URL에서 불러오지 못했습니다: ' + e.message + '\n(서버의 CORS 허용 여부, 주소, 네트워크를 확인하세요.)');
+    });
+  }
+  function loadFile(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () { load(String(reader.result), file.name); };
+    reader.onerror = function () { showError('파일을 읽지 못했습니다.'); };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  /* ---------- 렌더링 ---------- */
+  function render() {
+    var r = state.report;
+    $('loader').classList.add('hidden');
+    $('report').classList.remove('hidden');
+    $('reload-btn').classList.remove('hidden');
+
+    var banner = $('schema-banner');
+    if (r._convertedFrom) {
+      banner.textContent = '이전 형식(' + r._convertedFrom + ') 보고서입니다. 판정 없이 v2 용어로 바꿔 표시합니다 (정황 정보는 없음).';
+      banner.classList.remove('hidden');
+    } else if (r.schema !== SCHEMA) {
+      banner.textContent = '이 뷰어는 ' + SCHEMA + ' 형식용입니다. 보고서 형식: ' + (r.schema || '알 수 없음') + ' — 일부 내용이 다르게 보일 수 있습니다.';
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+    renderHead(r);
+    renderIssues(r);
+    renderLists();
+  }
+
+  function n(v) { return v != null ? v : 0; }
+
+  function renderHead(r) {
+    var s = r.summary || {};
+    $('facts').innerHTML =
+      '<div class="label">점검 결과 (판정 없음)</div>' +
+      '<div class="line">찾을 수 없음 <b>' + n(s.notFound) + '</b> · 오류 <b>' + n(s.error) + '</b></div>' +
+      '<div class="line">미포함 목록 <b>' + n(s.notIncludedLists) + '</b>' +
+        (n(s.notIncludedListsWithEvidence) ? ' <span class="ev">정황 있음 ' + n(s.notIncludedListsWithEvidence) + '</span>' : '') + '</div>' +
+      '<div class="line">확인됨 <b>' + n(s.resolved) + '</b> / ' + n(s.total) + ' 항목</div>' +
+      '<div class="note">모든 Bidmad 모듈 연동을 가정한 결과입니다. 판단은 아래 항목을 보고 하세요.</div>';
+
+    var app = r.app || {}, dev = r.device || {}, sdk = r.sdk || {};
+    var version = [app.versionName, app.versionCode != null ? '(' + app.versionCode + ')' : null].filter(Boolean).join(' ');
+    var device = [dev.manufacturer, dev.model].filter(Boolean).join(' ');
+    var android = dev.release ? 'Android ' + dev.release + (dev.sdkInt ? ' · API ' + dev.sdkInt : '') : (dev.sdkInt ? 'API ' + dev.sdkInt : '');
+    var trigger = r.trigger === 'startup' ? '앱 시작' : (r.trigger ? '재실행 (' + r.trigger + ')' : '—');
+    var appFlags = [];
+    if (app.debuggable === true) appFlags.push('debuggable');
+    if (app.splitApks) appFlags.push('split APK ' + app.splitApks + '개');
+    if (app.targetSdk) appFlags.push('target ' + app.targetSdk);
+    var small = function (t) { return '<div class="faint" style="font-size:12px">' + t + '</div>'; };
+    var rows = [
+      ['앱 패키지', '<span class="mono">' + esc(app['package'] || '—') + '</span>'],
+      ['앱 버전', esc(version || '—') + (appFlags.length ? small(esc(appFlags.join(' · '))) : '')],
+      ['설치 출처', '<span class="mono">' + esc(app.installer || '—') + '</span>'],
+      ['기기', esc(device || '—') + (android ? small(esc(android) + (dev.abis && dev.abis.length ? ' · ' + esc(dev.abis[0]) : '')) : '')],
+      ['SDK', 'bidmad ' + esc(sdk.bidmad || '알 수 없음') + small('inspector ' + esc(sdk.inspector || '—'))],
+      ['점검 시각', esc(fmtTime(r)) + small(esc(trigger) + ' · ' + esc(r.elapsedMs != null ? r.elapsedMs + 'ms' : '—'))]
+    ];
+    $('meta').innerHTML = rows.map(function (row) { return '<div><dt>' + row[0] + '</dt><dd>' + row[1] + '</dd></div>'; }).join('') +
+      (r.runId ? '<div><dt>실행 ID</dt><dd class="mono faint">' + esc(r.runId) + '</dd></div>' : '');
+
+    var tiles = [
+      ['unresolved', '찾을 수 없음', s.notFound, 'var(--bad)'],
+      ['unresolved', '오류', s.error, 'var(--bad)'],
+      ['notincluded', '미포함 목록', s.notIncludedLists, 'var(--ni)', n(s.notIncludedItems) + '개 항목' + (n(s.notIncludedListsWithEvidence) ? ' · 정황 있음 ' + n(s.notIncludedListsWithEvidence) : '')],
+      ['attention', '경고', s.warn, 'var(--warn)'],
+      ['attention', '건너뜀', s.skip, 'var(--skip)'],
+      ['resolved', '확인됨', s.resolved, 'var(--ok)', n(s.total) + '개 항목 중']
+    ];
+    $('tiles').innerHTML = tiles.map(function (t) {
+      var active = state.status === t[0] ? ' active' : '';
+      return '<button type="button" class="tile' + active + '" data-filter="' + t[0] + '" title="이 상태의 목록만 보기">' +
+        '<div class="k"><span class="dot" style="background:' + t[3] + '"></span>' + esc(t[1]) + '</div>' +
+        '<div class="n">' + esc(n(t[2])) + '</div>' +
+        (t[4] ? '<div class="faint" style="font-size:11.5px">' + esc(t[4]) + '</div>' : '') + '</button>';
+    }).join('');
+
+    var total = Math.max(1, n(s.total));
+    var seg = function (v, color, label) {
+      return v ? '<span style="width:' + (v / total * 100) + '%;background:' + color + '" title="' + esc(label + ' ' + v) + '"></span>' : '';
+    };
+    $('bar').innerHTML = seg(n(s.notFound) + n(s.error), 'var(--bad)', '찾을 수 없음·오류') +
+      seg(s.notIncludedItems, 'var(--ni)', '미포함') + seg(s.skip, 'var(--skip)', '건너뜀') + seg(s.resolved, 'var(--ok)', '확인됨');
+  }
+
+  function issue(tag, what, why) {
+    return '<div class="issue"><div>' + tag + '</div><div><div class="what">' + what + '</div><div class="why">' + why + '</div></div></div>';
+  }
+  function listLink(name) {
+    return '<a href="#list-' + esc(name) + '" data-jump="' + esc(name) + '">' + esc(name) + '</a>';
+  }
+
+  function renderIssues(r) {
+    var unresolved = [], notIncl = [], other = [];
+    if (r.runError) other.push(issue('<span class="badge s-ERROR">실행 오류</span>', '<span class="mono">' + esc(r.runError) + '</span>', '점검 실행 자체가 중단되었습니다.'));
+    (r.listErrors || []).forEach(function (e) {
+      other.push(issue('<span class="badge s-WARN">목록 오류</span>', '<span class="mono">' + esc(e.path) + '</span>', '사유: ' + esc(e.reason)));
+    });
+    var ni = [];
+    r.lists.forEach(function (list) {
+      if (list.state === 'NOT_INCLUDED') { ni.push(list); return; }
+      (list.items || []).forEach(function (it) {
+        if (!UNRESOLVED[it.status]) return;
+        unresolved.push(issue(badge(it.status),
+          '<span class="faint">' + esc(TYPE[it.type] || it.type) + '</span> ' + itemTitle(it),
+          '<span class="mono">' + esc(it.detail || '') + '</span>' +
+          (it.evidence && it.evidence.length ? ' · 정황 ' + evChips(it.evidence) : '') +
+          ' · 목록 ' + listLink(list.name) +
+          (list.pulledBy && list.pulledBy.length ? ' · 끌어오는 모듈 ' + list.pulledBy.map(esc).join(', ') : '') +
+          (it.src ? ' · 출처 <span class="mono">' + esc(it.src) + '</span>' : '')));
+      });
+    });
+    ni.sort(function (a, b) {
+      return ((b.evidence || []).length > 0) - ((a.evidence || []).length > 0) || a.name.localeCompare(b.name);
+    });
+    ni.forEach(function (list) {
+      var ev = list.evidence || [];
+      var sub = list.role === 'library' ? '<span class="mono">' + esc(list.library || '') + '</span>' : '모듈 <span class="mono">' + esc(list.module || list.name) + '</span>';
+      notIncl.push(issue(badge('NOT_INCLUDED'),
+        listLink(list.name) + ' <span class="faint">' + (list.items || []).length + '개 항목</span>' + (ev.length ? ' ' + evChips(ev) : ''),
+        sub + (list.pulledBy && list.pulledBy.length ? ' · 끌어오는 모듈 ' + list.pulledBy.map(esc).join(', ') : '') +
+        (ev.length ? ' · <b>앱에 들어 있다는 정황이 있음 — 이름이 바뀌었을 수 있습니다</b>' : ' · 정황 없음')));
+    });
+    (r.warnings || []).forEach(function (w) {
+      other.push(issue('<span class="badge s-WARN">경고 · ' + esc(w.kind) + '</span>', '<span class="mono">' + esc(w.subject) + '</span>',
+        '<span class="mono">' + esc(w.detail) + '</span> · 목록 ' + listLink(w.list)));
+    });
+    var html = '';
+    if (unresolved.length) html += '<div class="group-title">찾을 수 없음·오류 (' + unresolved.length + ')</div>' + unresolved.join('');
+    if (notIncl.length) html += '<div class="group-title">미포함 목록 (' + notIncl.length + ') — 확인된 것이 아닙니다</div>' + notIncl.join('');
+    if (other.length) html += '<div class="group-title">경고·기타 (' + other.length + ')</div>' + other.join('');
+    $('issues-title').textContent = '검토할 항목 (' + (unresolved.length + notIncl.length + other.length) + ')';
+    $('issues').innerHTML = html || '<div class="empty">검토할 항목이 없습니다. 모든 항목이 원래 이름으로 확인됐습니다.</div>';
+  }
+
+  function matchesQuery(list, q) {
+    if (!q) return true;
+    var hay = [list.name, list.module, list.library].concat(list.pulledBy || []).concat(list.evidence || []);
+    (list.items || []).forEach(function (it) { hay.push(it.name, it.member, it.detail); });
+    return hay.join('\n').toLowerCase().indexOf(q) >= 0;
+  }
+  function itemMatches(it, q) {
+    return !q || [it.name, it.member, it.detail, it.type].join('\n').toLowerCase().indexOf(q) >= 0;
+  }
+
+  function renderLists() {
+    var q = state.q.trim().toLowerCase();
+    var rows = state.report.lists.map(function (list) {
+      var st = listStats(list);
+      return { list: list, st: st, kind: listKind(list, st) };
+    });
+    var visible = rows.filter(function (row) {
+      if (state.role !== 'all' && row.list.role !== state.role) return false;
+      if (state.status !== 'all' && row.kind !== state.status) return false;
+      return matchesQuery(row.list, q);
+    });
+    visible.sort(function (a, b) {
+      return (kindOrder(a.list, a.kind) - kindOrder(b.list, b.kind)) || a.list.name.localeCompare(b.list.name);
+    });
+    $('lists-count').textContent = visible.length + ' / ' + rows.length + '개';
+    if (!visible.length) { $('lists').innerHTML = '<div class="empty">조건에 맞는 목록이 없습니다.</div>'; return; }
+
+    $('lists').innerHTML = visible.map(function (row) {
+      var list = row.list, st = row.st, name = list.name;
+      var ev = list.evidence || [];
+      var defaultOpen = row.kind === 'unresolved' || (row.kind === 'notincluded' && ev.length > 0) || (q && row.kind !== 'notincluded');
+      var open = state.open[name] != null ? state.open[name] : defaultOpen;
+      var sub = list.role === 'library'
+        ? '<span class="mono">' + esc(list.library || '') + '</span>' + (list.pulledBy && list.pulledBy.length ? ' · 끌어오는 모듈 ' + list.pulledBy.map(esc).join(', ') : '')
+        : '모듈 <span class="mono">' + esc(list.module || name) + '</span>';
+      var warns = warningsFor(name);
+
+      var counts = [];
+      if (list.state === 'NOT_INCLUDED') {
+        counts.push(badge('NOT_INCLUDED'));
+        if (ev.length) counts.push(evChips(ev));
+      } else {
+        if (st.unresolved) counts.push('<span class="badge s-NOT_FOUND">찾을 수 없음·오류 ' + st.unresolved + '</span>');
+        if (list.state === 'TIMEOUT') counts.push(badge('TIMEOUT'));
+        else if (st.SKIP) counts.push('<span class="badge s-SKIP">건너뜀 ' + st.SKIP + '</span>');
+        if (warns.length) counts.push('<span class="badge s-WARN">경고 ' + warns.length + '</span>');
+        counts.push('<span class="badge s-RESOLVED">확인됨 ' + st.RESOLVED + '/' + st.total + '</span>');
+      }
+
+      var t = Math.max(1, st.total);
+      var mini = list.state === 'NOT_INCLUDED'
+        ? '<div class="mini"><span style="width:100%;background:var(--ni)"></span></div>'
+        : '<div class="mini">' +
+          (st.unresolved ? '<span style="width:' + (st.unresolved / t * 100) + '%;background:var(--bad)"></span>' : '') +
+          (st.SKIP ? '<span style="width:' + (st.SKIP / t * 100) + '%;background:var(--skip)"></span>' : '') +
+          (st.RESOLVED ? '<span style="width:' + (st.RESOLVED / t * 100) + '%;background:var(--ok)"></span>' : '') + '</div>';
+
+      var items = (list.items || []).filter(function (it) {
+        return !q || name.toLowerCase().indexOf(q) >= 0 || itemMatches(it, q);
+      });
+      var body = '';
+      if (list.state === 'NOT_INCLUDED') {
+        body += '<div class="note-row">이 목록의 클래스를 원래 이름으로 하나도 찾지 못했습니다. ' +
+          '<b>연동하지 않음</b>과 <b>연동했지만 이름이 바뀜</b>은 기기에서 구분할 수 없어 판정하지 않습니다 — 확인된 것으로 세지 않습니다.' +
+          (ev.length ? '<br>정황: ' + evChips(ev) + ' — 앱에 들어 있다는 근거가 있으므로 이름이 바뀌었을 가능성을 확인하세요.' : '<br>정황: 없음') + '</div>';
+      }
+      if (warns.length) {
+        body += '<div class="note-row">' + warns.map(function (w) {
+          return badge('WARN') + ' <span class="mono">' + esc(w.kind + ' ' + w.subject + ' ' + w.detail) + '</span>';
+        }).join('<br>') + '</div>';
+      }
+      body += '<table><thead><tr><th>상태</th><th>종류</th><th>이름</th><th>단계</th><th>상세</th><th>정황</th><th>출처</th></tr></thead><tbody>' +
+        items.map(function (it) {
+          return '<tr class="' + (UNRESOLVED[it.status] && list.state !== 'NOT_INCLUDED' ? 'hl' : '') + '"><td class="nw">' + badge(it.status) + '</td>' +
+            '<td class="nw">' + esc(TYPE[it.type] || it.type) + '</td>' +
+            '<td class="name">' + itemTitle(it) + '</td>' +
+            '<td class="faint nw">' + esc(it.level || '') + '</td>' +
+            '<td class="detail mono">' + esc(it.detail || '') + '</td>' +
+            '<td>' + evChips(it.evidence) + '</td>' +
+            '<td class="mono faint">' + esc(it.src || '') + '</td></tr>';
+        }).join('') +
+        (items.length ? '' : '<tr><td colspan="7" class="faint">' + (list.items && list.items.length ? '검색어와 맞는 항목이 없습니다.' : '항목 없음') + '</td></tr>') +
+        '</tbody></table>';
+
+      return '<details class="list" id="list-' + esc(name) + '" data-name="' + esc(name) + '"' + (open ? ' open' : '') + '>' +
+        '<summary><span class="chev" aria-hidden="true">▶</span>' +
+        '<div class="lname"><div class="n">' + esc(name) + ' <span class="role">' + (list.role === 'library' ? '라이브러리' : 'SDK') + '</span></div>' +
+        '<div class="sub">' + sub + '</div></div>' + mini +
+        '<div class="counts">' + counts.join('') + '</div></summary>' +
+        '<div class="items-wrap">' + body + '</div></details>';
+    }).join('');
+  }
+
+  /* ---------- 이벤트 ---------- */
+  function setSeg(groupId, value) {
+    Array.prototype.forEach.call($(groupId).querySelectorAll('button'), function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === value));
+    });
+  }
+  $('status-filter').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    state.status = b.getAttribute('data-v'); setSeg('status-filter', state.status);
+    renderHead(state.report); renderLists();
+  });
+  $('role-filter').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    state.role = b.getAttribute('data-v'); setSeg('role-filter', state.role); renderLists();
+  });
+  $('tiles').addEventListener('click', function (e) {
+    var b = e.target.closest('.tile'); if (!b) return;
+    var f = b.getAttribute('data-filter');
+    state.status = state.status === f ? 'all' : f;
+    setSeg('status-filter', state.status);
+    renderHead(state.report); renderLists();
+  });
+  var qTimer = null;
+  $('q').addEventListener('input', function (e) {
+    clearTimeout(qTimer);
+    var v = e.target.value;
+    qTimer = setTimeout(function () { state.q = v; state.open = {}; renderLists(); }, 120);
+  });
+  $('lists').addEventListener('toggle', function (e) {
+    var d = e.target;
+    if (d && d.classList && d.classList.contains('list')) state.open[d.getAttribute('data-name')] = d.open;
+  }, true);
+  $('expand-all').addEventListener('click', function () {
+    Array.prototype.forEach.call(document.querySelectorAll('#lists details.list'), function (d) { d.open = true; });
+  });
+  $('collapse-all').addEventListener('click', function () {
+    Array.prototype.forEach.call(document.querySelectorAll('#lists details.list'), function (d) { d.open = false; });
+  });
+  $('issues').addEventListener('click', function (e) {
+    var a = e.target.closest('a[data-jump]'); if (!a) return;
+    e.preventDefault();
+    var name = a.getAttribute('data-jump');
+    state.status = 'all'; state.role = 'all'; state.q = ''; $('q').value = '';
+    setSeg('status-filter', 'all'); setSeg('role-filter', 'all');
+    state.open[name] = true;
+    renderHead(state.report); renderLists();
+    var el = document.getElementById('list-' + name);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  $('pick-btn').addEventListener('click', function () { $('file-input').click(); });
+  $('file-input').addEventListener('change', function (e) { loadFile(e.target.files[0]); e.target.value = ''; });
+  $('url-form').addEventListener('submit', function (e) { e.preventDefault(); loadUrl($('url-input').value.trim()); });
+  $('reload-btn').addEventListener('click', function () {
+    $('report').classList.add('hidden');
+    $('loader').classList.remove('hidden');
+    $('reload-btn').classList.add('hidden');
+    $('source-label').textContent = '';
+  });
+
+  var loaderEl = $('loader');
+  ['dragenter', 'dragover'].forEach(function (t) {
+    document.addEventListener(t, function (e) { e.preventDefault(); loaderEl.classList.add('drag'); });
+  });
+  ['dragleave', 'drop'].forEach(function (t) {
+    document.addEventListener(t, function (e) {
+      e.preventDefault();
+      if (t === 'drop' || e.target === document.documentElement) loaderEl.classList.remove('drag');
+    });
+  });
+  document.addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) loadFile(f);
+  });
+
+  var THEMES = [null, 'light', 'dark'];
+  var THEME_LABEL = { null: '테마: 자동', light: '테마: 밝게', dark: '테마: 어둡게' };
+  var theme = null;
+  try { theme = localStorage.getItem('linkcheck-theme'); } catch (e) { theme = null; }
+  if (THEMES.indexOf(theme) < 0) theme = null;
+  function applyTheme() {
+    if (theme) document.documentElement.setAttribute('data-theme', theme);
+    else document.documentElement.removeAttribute('data-theme');
+    $('theme-btn').textContent = THEME_LABEL[theme];
+  }
+  $('theme-btn').addEventListener('click', function () {
+    theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+    try { if (theme) localStorage.setItem('linkcheck-theme', theme); else localStorage.removeItem('linkcheck-theme'); } catch (e) {}
+    applyTheme();
+  });
+  applyTheme();
+
+  var src = null;
+  try { src = new URLSearchParams(location.search).get('src'); } catch (e) { src = null; }
+  if (src) { $('url-input').value = src; loadUrl(src); }
+})();
+</script>
+</body>
+</html>
