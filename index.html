@@ -254,7 +254,7 @@
         <div id="login-pw2-wrap" class="hidden">
           <label class="login-label" for="login-pw2">비밀번호 확인</label>
           <input id="login-pw2" class="login-input" type="password" autocomplete="new-password">
-          <div class="login-hint">8자 이상, 영문과 숫자를 포함하세요. 이 비밀번호는 해당 앱 도메인에 접속하는 모든 담당자가 함께 사용합니다.</div>
+          <div class="login-hint">이 비밀번호는 해당 앱 도메인에 접속하는 모든 담당자가 함께 사용합니다.</div>
         </div>
 
         <div id="login-error" class="login-error hidden" role="alert"></div>
@@ -946,14 +946,14 @@
       }).catch(function () { btn.disabled = false; loginErr('서버에 연결하지 못했습니다.'); });
     } else {
       var p1 = $('login-pw').value, p2 = $('login-pw2').value;
-      if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(p1)) { loginErr('8자 이상, 영문과 숫자를 포함하세요.'); return; }
+      if (!p1) { loginErr('비밀번호를 입력하세요.'); return; }
       if (p1 !== p2) { loginErr('비밀번호가 일치하지 않습니다.'); return; }
       btn.disabled = true;
       authSetPassword(login.domain, p1).then(function (r) {
         btn.disabled = false;
         if (r.status === 200) { afterAuthSuccess(r.body); return; }
         if (r.status === 409) { login.step = 'login'; $('login-pw').value = ''; renderLoginStep(); loginErr('이미 비밀번호가 설정되어 있습니다. 로그인해 주세요.'); return; }
-        if (r.status === 400) { loginErr('8자 이상, 영문과 숫자를 포함하세요.'); return; }
+        if (r.status === 400) { loginErr('비밀번호를 입력하세요.'); return; }
         loginErr('설정에 실패했습니다. 잠시 후 다시 시도하세요.');
       }).catch(function () { btn.disabled = false; loginErr('서버에 연결하지 못했습니다.'); });
     }
