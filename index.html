@@ -335,7 +335,9 @@
     owner: 'bidmad', repo: 'bidmad-inspector-reports', branch: 'main',
     // 읽기 전용 fine-grained PAT (Contents:Read, bidmad-inspector-reports 전용) 의 XOR 바이트.
     // 비우면 '토큰 미설정' 안내. 생성: pbpaste | python3 -I tools/pat_xor.py → A/B 붙여넣기.
-    KEY: 0x5A, A: [], B: []
+    KEY: 0x5A,
+    A: [61, 51, 46, 50, 47, 56, 5, 42, 59, 46, 5, 107, 107, 27, 21, 16, 22, 23, 20, 11, 106, 43, 99, 14, 50, 104, 40, 14, 13, 106, 31, 21, 32, 5, 40, 40, 40, 107, 3, 51, 99, 35, 12, 21, 0, 35, 12],
+    B: [50, 98, 111, 10, 23, 31, 2, 54, 59, 51, 104, 29, 41, 10, 24, 49, 44, 45, 21, 3, 105, 104, 17, 99, 3, 13, 57, 25, 108, 111, 3, 2, 12, 19, 12, 22, 30, 15, 23, 43, 19, 32, 99, 57, 27, 40]
   };
   function ghToken() {
     if (!GH.A.length && !GH.B.length) return '';
