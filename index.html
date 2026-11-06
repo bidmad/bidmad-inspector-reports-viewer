@@ -213,7 +213,7 @@
   <!-- 진입 안내 — 퍼블리셔 목록 없음 (앱 전용 링크로만 접근, 다른 앱 노출 방지) -->
   <section id="view-landing" class="hidden">
     <div class="statusmsg">이 페이지는 <b>앱 전용 링크</b>로 접속해야 합니다.<br>
-      담당자에게 받은 링크(<span class="mono">…/#site/&lt;앱 키&gt;</span>)로 다시 열어 주세요.</div>
+      담당자에게 받은 서명된 링크(<span class="mono">…/#site/&lt;앱 키&gt;/&lt;서명&gt;</span>)로 다시 열어 주세요.</div>
   </section>
 
   <!-- 2단계: 실행 이력 -->
@@ -291,17 +291,15 @@
 
   /* ============================================================
    * 설정 — 데이터는 비공개 저장소(bidmad-inspector-reports)에 있고,
-   * 이 페이지는 읽기 전용 PAT 로 GitHub Contents API 에서 가져온다.
-   * 토큰은 XOR+base64 로 난독화해 심는다(GitHub secret scanning 회피용;
-   * 보안이 아니라 평문 노출 방지일 뿐이다 — 이 페이지를 여는 사람은
-   * 누구나 토큰을 추출해 비공개 저장소의 모든 보고서를 읽을 수 있다).
+   * 이 정적 페이지(GitHub Pages)는 Cloudflare Worker 프록시를 통해서만 읽는다.
+   * GitHub 토큰은 Worker 서버에만 있다(이 페이지에는 없음). 각 퍼블리셔 링크는
+   * sig=HMAC(site, LINK_SECRET) 서명을 담고, Worker 가 서명을 검증해 그 퍼블리셔의
+   * 데이터만 돌려준다 — 다른 퍼블리셔 데이터는 받을 수 없다.
    * ============================================================ */
   var CONFIG = {
-    dataRepo: 'bidmad/bidmad-inspector-reports',
-    branch: 'main',
-    reportsPath: 'reports',
-    tokenKey: 'bidmad-inspector-reports-viewer',  // XOR 키 (비밀 아님, 난독화용)
-    tokenBlob: 'BQAQBRQGchkPBy9UUjUgOGE/KyFfHB85XhMfFk8gJQ8LOzwZD2wGHwMGXRBHKxYbHDQ/IwZGIWw5Kz0YITw4GwApV1J3LFsGKi8bOxc4HkQzJls0PitGJScyGRQD'  // embed-token.py 가 채움. 비어 있으면 '토큰 미설정' 안내.
+    // 배포 시 Cloudflare Worker URL 로 교체 (예: 'https://bidmad-inspector-proxy.<계정>.workers.dev').
+    // 끝 슬래시 없이. 비어 있으면 '프록시 미설정' 안내.
+    apiBase: ''
   };
 
   var SCHEMA = 'bidmad.inspector.linkcheck/2';
@@ -332,39 +330,30 @@
     });
   }
 
-  /* ---------- 데이터 계층 ---------- */
-  function deobfToken() {
-    if (!CONFIG.tokenBlob) return null;
-    try {
-      var raw = atob(CONFIG.tokenBlob), key = CONFIG.tokenKey, out = '';
-      for (var i = 0; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-      return out;
-    } catch (e) { return null; }
-  }
-  // relPath 예: 'index.json', 'pkg_xxx/index.json', 'pkg_xxx/linkcheck-….json' (reports/ 기준)
-  function fetchData(relPath) {
-    var full = CONFIG.reportsPath + '/' + relPath;
-    if (DEV_BASE) {
-      var base = DEV_BASE.replace(/\/+$/, '');
-      return fetch(base + '/' + full, { cache: 'no-store' }).then(function (r) {
-        if (r.status === 404) throw mkErr('NOT_FOUND');
-        if (!r.ok) throw mkErr('HTTP ' + r.status);
-        return r.text();
-      });
-    }
-    var url = 'https://api.github.com/repos/' + CONFIG.dataRepo + '/contents/' + full + '?ref=' + encodeURIComponent(CONFIG.branch);
-    var headers = { 'Accept': 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28' };
-    var tok = deobfToken();
-    if (tok) headers['Authorization'] = 'Bearer ' + tok;
-    return fetch(url, { headers: headers, cache: 'no-store' }).then(function (r) {
-      if (r.status === 404) throw mkErr('NOT_FOUND');
-      if (r.status === 401 || r.status === 403) throw mkErr('AUTH');
-      if (!r.ok) throw mkErr('HTTP ' + r.status);
-      return r.text();
-    });
-  }
+  /* ---------- 데이터 계층 (Cloudflare Worker 프록시) ---------- */
   function mkErr(code) { var e = new Error(code); e.code = code; return e; }
-  function fetchJson(relPath) { return fetchData(relPath).then(function (t) { return JSON.parse(t); }); }
+  function handle(r) {
+    if (r.status === 404) throw mkErr('NOT_FOUND');
+    if (r.status === 401 || r.status === 403) throw mkErr('AUTH');
+    if (!r.ok) throw mkErr('HTTP ' + r.status);
+    return r.text();
+  }
+  // action: 'history' | 'report'. site+sig 는 현재 라우트에서 온다. file 은 report 에만.
+  function apiText(action, site, sig, file) {
+    if (DEV_BASE) {
+      // 로컬 개발: 서명 없이 정적 파일에서 직접 (reports/<site>/index.json | <file>)
+      var base = DEV_BASE.replace(/\/+$/, '');
+      var rel = 'reports/' + site + '/' + (action === 'report' ? file : 'index.json');
+      return fetch(base + '/' + rel, { cache: 'no-store' }).then(handle);
+    }
+    if (!CONFIG.apiBase) return Promise.reject(mkErr('NO_PROXY'));
+    var u = CONFIG.apiBase.replace(/\/+$/, '') + '/' + action +
+      '?site=' + encodeURIComponent(site) + '&sig=' + encodeURIComponent(sig);
+    if (action === 'report') u += '&file=' + encodeURIComponent(file);
+    return fetch(u, { cache: 'no-store' }).then(handle);
+  }
+  function fetchHistory(site, sig) { return apiText('history', site, sig).then(function (t) { return JSON.parse(t); }); }
+  function fetchReport(site, sig, file) { return apiText('report', site, sig, file); }
 
   /* ---------- 공통 UI ---------- */
   function showStatus(html, isErr) {
@@ -379,10 +368,8 @@
     });
   }
   function errHtml(e) {
-    if (!deobfToken() && !DEV_BASE) {
-      return '읽기 토큰이 아직 설정되지 않았습니다.\n비공개 저장소(' + esc(CONFIG.dataRepo) + ')를 읽으려면 읽기 전용 PAT 를 심어야 합니다.';
-    }
-    if (e && e.code === 'AUTH') return '접근 권한이 없습니다 (토큰이 만료·폐기됐거나 권한이 부족합니다).';
+    if (e && e.code === 'NO_PROXY') return '프록시(Worker) 주소가 설정되지 않았습니다.';
+    if (e && e.code === 'AUTH') return '유효하지 않은 링크입니다 (서명 불일치). 담당자에게 받은 전용 링크로 다시 열어 주세요.';
     if (e && e.code === 'NOT_FOUND') return '데이터를 찾을 수 없습니다. 아직 올라온 보고서가 없을 수 있습니다.';
     return '데이터를 불러오지 못했습니다: ' + esc(e && e.message || e);
   }
@@ -406,25 +393,26 @@
   }
 
   /* ============================================================
-   * 라우팅  (퍼블리셔 목록 없음 — 앱 전용 링크로만 접근)
-   *   #            또는 그 외                    → 진입 안내(landing)
-   *   #site/KEY                                 → 실행 이력
-   *   #site/KEY/run/FILE                        → 상세
-   *   (레거시 #list/site/KEY… 도 같은 앱으로 매핑; #list 단독은 landing)
+   * 라우팅  (퍼블리셔 목록 없음 — 서명된 앱 전용 링크로만 접근)
+   *   #                또는 그 외                → 진입 안내(landing)
+   *   #site/KEY/SIG                             → 실행 이력
+   *   #site/KEY/SIG/run/FILE                    → 상세
+   *   SIG = HMAC-SHA256(KEY, LINK_SECRET) (Worker 가 검증)
    * ============================================================ */
   function parseRoute() {
     var h = location.hash.replace(/^#\/?/, '');
     var seg = h ? h.split('/').map(function (s) { try { return decodeURIComponent(s); } catch (e) { return s; } }) : [];
-    if (seg[0] === 'list') seg = seg.slice(1); // 레거시 #list/site/… 호환
-    if (seg[0] === 'site' && seg[1]) {
-      if (seg[2] === 'run' && seg[3]) return { view: 'detail', key: seg[1], file: seg[3] };
-      return { view: 'history', key: seg[1] };
+    if (seg[0] === 'list') seg = seg.slice(1); // 레거시 호환
+    if (seg[0] === 'site' && seg[1] && seg[2]) {
+      if (seg[3] === 'run' && seg[4]) return { view: 'detail', key: seg[1], sig: seg[2], file: seg[4] };
+      return { view: 'history', key: seg[1], sig: seg[2] };
     }
     return { view: 'landing' };
   }
   function hashFor(r) {
-    if (r.view === 'detail') return '#site/' + encodeURIComponent(r.key) + '/run/' + encodeURIComponent(r.file);
-    if (r.view === 'history') return '#site/' + encodeURIComponent(r.key);
+    var pre = '#site/' + encodeURIComponent(r.key) + '/' + encodeURIComponent(r.sig);
+    if (r.view === 'detail') return pre + '/run/' + encodeURIComponent(r.file);
+    if (r.view === 'history') return pre;
     return '#';
   }
   function go(r) { location.hash = hashFor(r); }
@@ -446,7 +434,7 @@
     var got = cache.pubIndex[route.key];
     if (got) { renderHistory(route, got); return; }
     showStatus('<span class="spin"></span>실행 이력을 불러오는 중…');
-    fetchJson(route.key + '/index.json').then(function (idx) {
+    fetchHistory(route.key, route.sig).then(function (idx) {
       cache.pubIndex[route.key] = idx; hideStatus(); renderHistory(route, idx);
     }).catch(function (e) { showStatus(errHtml(e), true); });
   }
@@ -485,9 +473,9 @@
     // 이력 인덱스를 먼저 확보(빵부스러기 이름 표시용) — 실패해도 상세는 계속 진행
     var ensurePub = cache.pubIndex[route.key]
       ? Promise.resolve(cache.pubIndex[route.key])
-      : fetchJson(route.key + '/index.json').then(function (i) { cache.pubIndex[route.key] = i; return i; }).catch(function () { return null; });
+      : fetchHistory(route.key, route.sig).then(function (i) { cache.pubIndex[route.key] = i; return i; }).catch(function () { return null; });
     ensurePub.then(function (i) { if (i) setCrumb(route, i.app); });
-    fetchData(route.key + '/' + route.file).then(function (text) {
+    fetchReport(route.key, route.sig, route.file).then(function (text) {
       hideStatus();
       loadReport(text, route.file);
     }).catch(function (e) { showStatus(errHtml(e), true); });
@@ -828,12 +816,12 @@
   var curRoute = { view: 'landing' };
   $('run-table').addEventListener('click', function (e) {
     var tr = e.target.closest('tr[data-file]'); if (!tr) return;
-    go({ view: 'detail', key: curRoute.key, file: tr.getAttribute('data-file') });
+    go({ view: 'detail', key: curRoute.key, sig: curRoute.sig, file: tr.getAttribute('data-file') });
   });
   $('crumb').addEventListener('click', function (e) {
     var a = e.target.closest('a[data-go]'); if (!a) return;
     e.preventDefault();
-    if (a.getAttribute('data-go') === 'history') go({ view: 'history', key: curRoute.key });
+    if (a.getAttribute('data-go') === 'history') go({ view: 'history', key: curRoute.key, sig: curRoute.sig });
   });
 
   // 테마
