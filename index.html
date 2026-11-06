@@ -193,6 +193,28 @@
     .issue { grid-template-columns: 1fr; }
     .rtable .hide-sm { display: none; }
   }
+  /* 로그인 화면 */
+  .login-wrap{max-width:460px;margin:24px auto}
+  .login-step{display:flex;align-items:center;gap:8px;margin:0 0 10px 2px;font-size:14px;color:var(--muted)}
+  .login-badge{background:var(--surface-2);color:var(--accent);font-weight:700;border-radius:999px;padding:3px 10px;font-size:13px}
+  .login-card{padding:24px}
+  .login-brand{display:flex;align-items:center;gap:10px}
+  .login-brand h2{margin:0;font-size:20px}
+  .login-logo{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;background:var(--accent);color:#fff;font-size:18px}
+  .login-sub{color:var(--muted);margin:8px 0 18px}
+  .login-label{display:block;font-size:13px;color:var(--muted);margin:14px 0 6px}
+  .login-input{width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);color:var(--text);font-size:15px;font-family:var(--mono)}
+  .login-input:focus{outline:2px solid var(--focus);outline-offset:1px;background:var(--surface)}
+  .login-chip{display:flex;align-items:center;gap:8px;padding:12px 14px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border)}
+  .login-check{color:var(--ok);font-weight:700}
+  .login-changelink{margin-left:auto;color:var(--accent);cursor:pointer;font-size:13px}
+  .login-firstbanner{display:flex;align-items:center;gap:8px;background:var(--ev-bg);color:var(--ev);border-radius:10px;padding:12px 14px;margin-bottom:6px;font-weight:600}
+  .login-hint{font-size:12px;color:var(--faint);margin-top:8px;line-height:1.5}
+  .login-error{background:var(--bad-bg);color:var(--bad);border-radius:10px;padding:10px 14px;margin-top:14px;font-size:14px}
+  .login-submit{width:100%;box-sizing:border-box;margin-top:18px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer}
+  .login-submit:hover{filter:brightness(1.05)}
+  .login-forgot{display:block;text-align:center;color:var(--accent);margin-top:14px;cursor:pointer;font-size:14px}
+  .login-foot{color:var(--faint);text-align:center;margin-top:14px;font-size:13px}
 </style>
 </head>
 <body>
@@ -203,6 +225,7 @@
       <span class="muted" id="source-label"></span>
     </div>
     <div style="display:flex; gap:8px;">
+      <button class="btn" id="logout-btn" type="button" title="로그아웃" style="display:none">로그아웃</button>
       <button class="btn" id="theme-btn" type="button" title="화면 테마 전환">테마</button>
     </div>
   </div>
@@ -210,10 +233,36 @@
 
   <div id="status" class="statusmsg hidden"></div>
 
-  <!-- 진입 안내 — 퍼블리셔 목록 없음 (앱 전용 링크로만 접근, 다른 앱 노출 방지) -->
-  <section id="view-landing" class="hidden">
-    <div class="statusmsg">이 페이지는 <b>앱 전용 링크</b>로 접속해야 합니다.<br>
-      담당자에게 받은 서명된 링크(<span class="mono">…/#site/&lt;앱 키&gt;/&lt;서명&gt;</span>)로 다시 열어 주세요.</div>
+  <!-- 로그인: 앱 도메인 + 공유 비밀번호 (단계는 JS 로 전환) -->
+  <section id="view-login" class="hidden">
+    <div class="login-wrap">
+      <div class="login-step"><span class="login-badge" id="login-badge">1단계</span><span id="login-step-title">앱 도메인 확인</span></div>
+      <div class="card login-card">
+        <div class="login-brand"><span class="login-logo" aria-hidden="true">⌖</span><h2>Bidmad Inspector 보고서</h2></div>
+        <p class="login-sub">퍼블리셔 전용 연결 점검 보고서</p>
+
+        <div id="login-firstbanner" class="login-firstbanner hidden"><span aria-hidden="true">🔑</span> 이 앱 도메인의 첫 접속입니다 — 비밀번호를 설정하세요.</div>
+
+        <label class="login-label" for="login-domain">앱 도메인</label>
+        <input id="login-domain" class="login-input" type="text" placeholder="17639-serving-bidmad.adop.co.kr" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
+        <div id="login-domain-chip" class="login-chip hidden"><span class="login-check" aria-hidden="true">✓</span><span id="login-domain-text" class="mono"></span><a id="login-change" class="login-changelink">변경</a></div>
+
+        <div id="login-pw-wrap" class="hidden">
+          <label class="login-label" for="login-pw">비밀번호</label>
+          <input id="login-pw" class="login-input" type="password" autocomplete="current-password">
+        </div>
+        <div id="login-pw2-wrap" class="hidden">
+          <label class="login-label" for="login-pw2">비밀번호 확인</label>
+          <input id="login-pw2" class="login-input" type="password" autocomplete="new-password">
+          <div class="login-hint">8자 이상, 영문과 숫자를 포함하세요. 이 비밀번호는 해당 앱 도메인에 접속하는 모든 담당자가 함께 사용합니다.</div>
+        </div>
+
+        <div id="login-error" class="login-error hidden" role="alert"></div>
+        <button id="login-submit" class="login-submit" type="button">계속 &rarr;</button>
+        <div id="login-forgot-wrap" class="hidden"><a id="login-forgot" class="login-forgot">비밀번호를 잊으셨나요?</a></div>
+        <div id="login-foot" class="login-foot">앱 도메인을 입력하면 비밀번호 설정 여부를 확인합니다.</div>
+      </div>
+    </div>
   </section>
 
   <!-- 2단계: 실행 이력 -->
@@ -305,10 +354,6 @@
   var SCHEMA = 'bidmad.inspector.linkcheck/2';
   var SCHEMA_V1 = 'bidmad.inspector.linkcheck/1';
 
-  // 로컬 개발용: ?dev=<baseURL> 이면 GitHub API 대신 그 경로에서 직접 가져온다.
-  var DEV_BASE = null;
-  try { DEV_BASE = new URLSearchParams(location.search).get('dev'); } catch (e) { DEV_BASE = null; }
-
   var STATUS = {
     RESOLVED: '확인됨', NOT_FOUND: '찾을 수 없음', ERROR: '오류', SKIP: '건너뜀',
     WARN: '경고', NOT_INCLUDED: '미포함', TIMEOUT: '시간 초과'
@@ -330,30 +375,38 @@
     });
   }
 
-  /* ---------- 데이터 계층 (Cloudflare Worker 프록시) ---------- */
+  /* ---------- 세션 / 인증 (Cloudflare Worker + D1) ----------
+   * 로그인(앱 도메인 + 공유 비밀번호) → 세션 토큰을 sessionStorage 에 보관(탭 닫으면 소멸).
+   * 읽기 요청은 Authorization: Bearer <token> 로 보내고, Worker 가 토큰의 site 데이터만 돌려준다. */
+  var SESSION_KEY = 'bidmad-inspector-session';
+  function getSession() { try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch (e) { return null; } }
+  function setSession(s) { try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) {} }
+  function clearSession() { try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {} cache.pubIndex = {}; }
+
   function mkErr(code) { var e = new Error(code); e.code = code; return e; }
-  function handle(r) {
-    if (r.status === 404) throw mkErr('NOT_FOUND');
-    if (r.status === 401 || r.status === 403) throw mkErr('AUTH');
-    if (!r.ok) throw mkErr('HTTP ' + r.status);
-    return r.text();
-  }
-  // action: 'history' | 'report'. site+sig 는 현재 라우트에서 온다. file 은 report 에만.
-  function apiText(action, site, sig, file) {
-    if (DEV_BASE) {
-      // 로컬 개발: 서명 없이 정적 파일에서 직접 (reports/<site>/index.json | <file>)
-      var base = DEV_BASE.replace(/\/+$/, '');
-      var rel = 'reports/' + site + '/' + (action === 'report' ? file : 'index.json');
-      return fetch(base + '/' + rel, { cache: 'no-store' }).then(handle);
-    }
+  function apiUrl(path) { return CONFIG.apiBase.replace(/\/+$/, '') + path; }
+  function authGet(path) {
+    var s = getSession();
+    if (!s || !s.token) return Promise.reject(mkErr('AUTH'));
     if (!CONFIG.apiBase) return Promise.reject(mkErr('NO_PROXY'));
-    var u = CONFIG.apiBase.replace(/\/+$/, '') + '/' + action +
-      '?site=' + encodeURIComponent(site) + '&sig=' + encodeURIComponent(sig);
-    if (action === 'report') u += '&file=' + encodeURIComponent(file);
-    return fetch(u, { cache: 'no-store' }).then(handle);
+    return fetch(apiUrl(path), { cache: 'no-store', headers: { 'Authorization': 'Bearer ' + s.token } }).then(function (r) {
+      if (r.status === 401) { clearSession(); throw mkErr('AUTH'); }
+      if (r.status === 404) throw mkErr('NOT_FOUND');
+      if (!r.ok) throw mkErr('HTTP ' + r.status);
+      return r.text();
+    });
   }
-  function fetchHistory(site, sig) { return apiText('history', site, sig).then(function (t) { return JSON.parse(t); }); }
-  function fetchReport(site, sig, file) { return apiText('report', site, sig, file); }
+  function fetchHistory() { return authGet('/history').then(function (t) { return JSON.parse(t); }); }
+  function fetchReport(file) { return authGet('/report?file=' + encodeURIComponent(file)); }
+
+  function postJson(path, body) {
+    if (!CONFIG.apiBase) return Promise.reject(mkErr('NO_PROXY'));
+    return fetch(apiUrl(path), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, body: j }; }); });
+  }
+  function authCheck(domain) { return postJson('/auth/check', { domain: domain }); }
+  function authLogin(domain, password) { return postJson('/auth/login', { domain: domain, password: password }); }
+  function authSetPassword(domain, password) { return postJson('/auth/set-password', { domain: domain, password: password }); }
 
   /* ---------- 공통 UI ---------- */
   function showStatus(html, isErr) {
@@ -363,13 +416,14 @@
   }
   function hideStatus() { $('status').classList.add('hidden'); }
   function showView(which) {
-    ['landing', 'history', 'detail'].forEach(function (v) {
+    ['login', 'history', 'detail'].forEach(function (v) {
       $('view-' + v).classList.toggle('hidden', v !== which);
     });
+    $('logout-btn').style.display = (which === 'login') ? 'none' : '';
   }
   function errHtml(e) {
     if (e && e.code === 'NO_PROXY') return '프록시(Worker) 주소가 설정되지 않았습니다.';
-    if (e && e.code === 'AUTH') return '유효하지 않은 링크입니다 (서명 불일치). 담당자에게 받은 전용 링크로 다시 열어 주세요.';
+    if (e && e.code === 'AUTH') return '세션이 만료되었습니다. 다시 로그인해 주세요.';
     if (e && e.code === 'NOT_FOUND') return '데이터를 찾을 수 없습니다. 아직 올라온 보고서가 없을 수 있습니다.';
     return '데이터를 불러오지 못했습니다: ' + esc(e && e.message || e);
   }
@@ -393,34 +447,22 @@
   }
 
   /* ============================================================
-   * 라우팅  (퍼블리셔 목록 없음 — 서명된 앱 전용 링크로만 접근)
-   *   #                또는 그 외                → 진입 안내(landing)
-   *   #site/KEY/SIG                             → 실행 이력
-   *   #site/KEY/SIG/run/FILE                    → 상세
-   *   SIG = HMAC-SHA256(KEY, LINK_SECRET) (Worker 가 검증)
+   * 라우팅 (로그인 후, 세션 토큰에 묶인 앱만)
+   *   #            → 실행 이력
+   *   #run/FILE    → 단일 실행 상세
    * ============================================================ */
   function parseRoute() {
     var h = location.hash.replace(/^#\/?/, '');
-    var seg = h ? h.split('/').map(function (s) { try { return decodeURIComponent(s); } catch (e) { return s; } }) : [];
-    if (seg[0] === 'list') seg = seg.slice(1); // 레거시 호환
-    if (seg[0] === 'site' && seg[1] && seg[2]) {
-      if (seg[3] === 'run' && seg[4]) return { view: 'detail', key: seg[1], sig: seg[2], file: seg[4] };
-      return { view: 'history', key: seg[1], sig: seg[2] };
-    }
-    return { view: 'landing' };
+    var seg = h ? h.split('/') : [];
+    if (seg[0] === 'run' && seg[1]) { var f; try { f = decodeURIComponent(seg[1]); } catch (e) { f = seg[1]; } return { view: 'detail', file: f }; }
+    return { view: 'history' };
   }
-  function hashFor(r) {
-    var pre = '#site/' + encodeURIComponent(r.key) + '/' + encodeURIComponent(r.sig);
-    if (r.view === 'detail') return pre + '/run/' + encodeURIComponent(r.file);
-    if (r.view === 'history') return pre;
-    return '#';
-  }
-  function go(r) { location.hash = hashFor(r); }
+  function go(r) { location.hash = (r.view === 'detail') ? ('#run/' + encodeURIComponent(r.file)) : '#'; }
 
   function setCrumb(route, pub) {
-    var c = $('crumb'), parts = [];
-    if (route.view === 'history' || route.view === 'detail') {
-      var name = esc(pub && pub.displayName || route.key);
+    var c = $('crumb'), parts = [], s = getSession();
+    if (s && route && (route.view === 'history' || route.view === 'detail')) {
+      var name = esc((pub && pub.displayName) || s.site);
       if (route.view === 'detail') parts.push('<a data-go="history">' + name + '</a>', '<span class="sep">›</span>', '<span>실행 상세</span>');
       else parts.push('<span>' + name + '</span>');
     }
@@ -430,13 +472,14 @@
   /* ---------- 실행 이력 ---------- */
   function route_history(route) {
     showView('history');
-    $('source-label').textContent = '';
-    var got = cache.pubIndex[route.key];
+    var site = getSession().site;
+    $('source-label').textContent = site;
+    var got = cache.pubIndex[site];
     if (got) { renderHistory(route, got); return; }
     showStatus('<span class="spin"></span>실행 이력을 불러오는 중…');
-    fetchHistory(route.key, route.sig).then(function (idx) {
-      cache.pubIndex[route.key] = idx; hideStatus(); renderHistory(route, idx);
-    }).catch(function (e) { showStatus(errHtml(e), true); });
+    fetchHistory().then(function (idx) {
+      cache.pubIndex[site] = idx; hideStatus(); renderHistory(route, idx);
+    }).catch(function (e) { if (e && e.code === 'AUTH') { showLoginFlow(); return; } showStatus(errHtml(e), true); });
   }
   function renderHistory(route, idx) {
     var app = idx.app || {};
@@ -445,7 +488,7 @@
     if (app.siteId) ident.push('<div class="dom">app domain site <b>' + esc(app.siteId) + '</b>' + (app.appDomain ? ' · ' + esc(app.appDomain) : '') + '</div>');
     else if (app.appDomain) ident.push('<div class="dom">' + esc(app.appDomain) + '</div>');
     if (app.package) ident.push('<div class="dom">패키지 ' + esc(app.package) + '</div>');
-    $('pub-meta').innerHTML = '<div class="pubhead"><h2 style="margin:0">' + esc(app.displayName || route.key) + '</h2>' +
+    $('pub-meta').innerHTML = '<div class="pubhead"><h2 style="margin:0">' + esc(app.displayName || getSession().site) + '</h2>' +
       ident.join('') + '</div><div class="faint" style="font-size:12px">실행 ' + (idx.runs || []).length + '회 · 최신순</div>';
 
     var runs = (idx.runs || []).slice();
@@ -467,18 +510,19 @@
   /* ---------- 3단계: 단일 실행 상세 ---------- */
   function route_detail(route) {
     showView('detail');
-    var pub = cache.pubIndex[route.key] && cache.pubIndex[route.key].app;
+    var site = getSession().site;
+    var pub = cache.pubIndex[site] && cache.pubIndex[site].app;
     setCrumb(route, pub);
     showStatus('<span class="spin"></span>보고서를 불러오는 중…');
     // 이력 인덱스를 먼저 확보(빵부스러기 이름 표시용) — 실패해도 상세는 계속 진행
-    var ensurePub = cache.pubIndex[route.key]
-      ? Promise.resolve(cache.pubIndex[route.key])
-      : fetchHistory(route.key, route.sig).then(function (i) { cache.pubIndex[route.key] = i; return i; }).catch(function () { return null; });
+    var ensurePub = cache.pubIndex[site]
+      ? Promise.resolve(cache.pubIndex[site])
+      : fetchHistory().then(function (i) { cache.pubIndex[site] = i; return i; }).catch(function () { return null; });
     ensurePub.then(function (i) { if (i) setCrumb(route, i.app); });
-    fetchReport(route.key, route.sig, route.file).then(function (text) {
+    fetchReport(route.file).then(function (text) {
       hideStatus();
       loadReport(text, route.file);
-    }).catch(function (e) { showStatus(errHtml(e), true); });
+    }).catch(function (e) { if (e && e.code === 'AUTH') { showLoginFlow(); return; } showStatus(errHtml(e), true); });
   }
 
   /* =========================================================
@@ -813,15 +857,15 @@
   });
 
   // 이력 행 클릭 → 상세
-  var curRoute = { view: 'landing' };
+  var curRoute = { view: 'history' };
   $('run-table').addEventListener('click', function (e) {
     var tr = e.target.closest('tr[data-file]'); if (!tr) return;
-    go({ view: 'detail', key: curRoute.key, sig: curRoute.sig, file: tr.getAttribute('data-file') });
+    go({ view: 'detail', file: tr.getAttribute('data-file') });
   });
   $('crumb').addEventListener('click', function (e) {
     var a = e.target.closest('a[data-go]'); if (!a) return;
     e.preventDefault();
-    if (a.getAttribute('data-go') === 'history') go({ view: 'history', key: curRoute.key, sig: curRoute.sig });
+    if (a.getAttribute('data-go') === 'history') go({ view: 'history' });
   });
 
   // 테마
@@ -842,15 +886,96 @@
   });
   applyTheme();
 
+  /* ---------- 로그인 UI ---------- */
+  var login = { step: 'domain', domain: '', site: '' };
+  function loginErr(msg) { var el = $('login-error'); if (!msg) { el.classList.add('hidden'); el.textContent = ''; } else { el.textContent = msg; el.classList.remove('hidden'); } }
+  function setHidden(id, hide) { $(id).classList.toggle('hidden', !!hide); }
+  function renderLoginStep() {
+    var st = login.step;
+    setHidden('login-domain', st !== 'domain');
+    setHidden('login-domain-chip', st === 'domain');
+    setHidden('login-pw-wrap', st === 'domain');
+    setHidden('login-pw2-wrap', st !== 'set');
+    setHidden('login-firstbanner', st !== 'set');
+    setHidden('login-forgot-wrap', st !== 'login');
+    setHidden('login-foot', st !== 'domain');
+    $('login-domain-text').textContent = login.domain;
+    if (st === 'domain') { $('login-badge').textContent = '1단계'; $('login-step-title').textContent = '앱 도메인 확인'; $('login-submit').innerHTML = '계속 &rarr;'; }
+    else if (st === 'login') { $('login-badge').textContent = '2단계'; $('login-step-title').textContent = '비밀번호 입력'; $('login-submit').textContent = '로그인'; }
+    else { $('login-badge').textContent = '설정'; $('login-step-title').textContent = '비밀번호 설정 · 처음 접속'; $('login-submit').textContent = '비밀번호 설정 후 로그인'; }
+    loginErr('');
+    setTimeout(function () { try { (st === 'domain' ? $('login-domain') : $('login-pw')).focus(); } catch (e) {} }, 30);
+  }
+  function showLoginFlow() {
+    clearSession();
+    login = { step: 'domain', domain: '', site: '' };
+    $('login-domain').value = ''; $('login-pw').value = ''; $('login-pw2').value = '';
+    $('crumb').innerHTML = ''; $('source-label').textContent = '';
+    showView('login');
+    renderLoginStep();
+  }
+  function afterAuthSuccess(res) {
+    setSession({ token: res.token, site: res.site });
+    if (location.hash && location.hash !== '#') location.hash = '#'; else route();
+  }
+  function submitLogin() {
+    loginErr('');
+    var btn = $('login-submit');
+    if (login.step === 'domain') {
+      var dom = $('login-domain').value.trim();
+      if (!dom) { loginErr('앱 도메인을 입력하세요.'); return; }
+      btn.disabled = true;
+      authCheck(dom).then(function (r) {
+        btn.disabled = false;
+        if (r.status === 400) { loginErr('앱 도메인 형식이 올바르지 않습니다.'); return; }
+        if (r.status !== 200) { loginErr('확인에 실패했습니다. 잠시 후 다시 시도하세요.'); return; }
+        login.domain = dom; login.site = r.body.site;
+        login.step = r.body.hasPassword ? 'login' : 'set';
+        renderLoginStep();
+      }).catch(function () { btn.disabled = false; loginErr('서버에 연결하지 못했습니다.'); });
+    } else if (login.step === 'login') {
+      var pw = $('login-pw').value;
+      if (!pw) { loginErr('비밀번호를 입력하세요.'); return; }
+      btn.disabled = true;
+      authLogin(login.domain, pw).then(function (r) {
+        btn.disabled = false;
+        if (r.status === 200) { afterAuthSuccess(r.body); return; }
+        if (r.status === 429) { var m = Math.ceil((r.body.retryAfterMs || 0) / 60000); loginErr('로그인이 일시적으로 잠겼습니다. ' + (m ? m + '분 후 ' : '잠시 후 ') + '다시 시도하세요.'); return; }
+        if (r.status === 404) { login.step = 'set'; renderLoginStep(); loginErr('비밀번호가 설정되어 있지 않습니다. 새로 설정하세요.'); return; }
+        loginErr('비밀번호가 올바르지 않습니다.' + (r.body && r.body.remaining != null ? ' (남은 시도 ' + r.body.remaining + '회)' : ''));
+      }).catch(function () { btn.disabled = false; loginErr('서버에 연결하지 못했습니다.'); });
+    } else {
+      var p1 = $('login-pw').value, p2 = $('login-pw2').value;
+      if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(p1)) { loginErr('8자 이상, 영문과 숫자를 포함하세요.'); return; }
+      if (p1 !== p2) { loginErr('비밀번호가 일치하지 않습니다.'); return; }
+      btn.disabled = true;
+      authSetPassword(login.domain, p1).then(function (r) {
+        btn.disabled = false;
+        if (r.status === 200) { afterAuthSuccess(r.body); return; }
+        if (r.status === 409) { login.step = 'login'; $('login-pw').value = ''; renderLoginStep(); loginErr('이미 비밀번호가 설정되어 있습니다. 로그인해 주세요.'); return; }
+        if (r.status === 400) { loginErr('8자 이상, 영문과 숫자를 포함하세요.'); return; }
+        loginErr('설정에 실패했습니다. 잠시 후 다시 시도하세요.');
+      }).catch(function () { btn.disabled = false; loginErr('서버에 연결하지 못했습니다.'); });
+    }
+  }
+  $('login-submit').addEventListener('click', submitLogin);
+  ['login-domain', 'login-pw', 'login-pw2'].forEach(function (id) {
+    $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitLogin(); } });
+  });
+  $('login-change').addEventListener('click', function () { login.step = 'domain'; $('login-pw').value = ''; $('login-pw2').value = ''; var d = login.domain; renderLoginStep(); $('login-domain').value = d; });
+  $('login-forgot').addEventListener('click', function () { loginErr('비밀번호 재설정은 ADOP 담당자에게 문의하세요.'); });
+  $('logout-btn').addEventListener('click', function () { showLoginFlow(); });
+
   /* ---------- 라우터 구동 ---------- */
   function route() {
+    var s = getSession();
+    if (!s || !s.token) { showLoginFlow(); return; }
     var r = parseRoute();
     curRoute = r;
     hideStatus();
-    setCrumb(r, (cache.pubIndex[r.key] && cache.pubIndex[r.key].app) || null);
-    if (r.view === 'history') route_history(r);
-    else if (r.view === 'detail') route_detail(r);
-    else { showView('landing'); $('source-label').textContent = ''; }
+    setCrumb(r, (cache.pubIndex[s.site] && cache.pubIndex[s.site].app) || null);
+    if (r.view === 'detail') route_detail(r);
+    else route_history(r);
   }
   window.addEventListener('hashchange', route);
   route();
