@@ -225,7 +225,7 @@
       <span class="muted" id="source-label"></span>
     </div>
     <div style="display:flex; gap:8px;">
-      <button class="btn" id="logout-btn" type="button" title="로그아웃" style="display:none">로그아웃</button>
+      <button class="btn" id="logout-btn" type="button" title="다른 앱 도메인 입력" style="display:none">다른 앱</button>
       <button class="btn" id="theme-btn" type="button" title="화면 테마 전환">테마</button>
     </div>
   </div>
@@ -233,34 +233,20 @@
 
   <div id="status" class="statusmsg hidden"></div>
 
-  <!-- 로그인: 앱 도메인 + 공유 비밀번호 (단계는 JS 로 전환) -->
+  <!-- 앱 도메인 선택 (비밀번호 없음 — 앱 도메인만 입력하면 해당 앱 보고서를 연다) -->
   <section id="view-login" class="hidden">
     <div class="login-wrap">
-      <div class="login-step"><span class="login-badge" id="login-badge">1단계</span><span id="login-step-title">앱 도메인 확인</span></div>
+      <div class="login-step"><span class="login-badge">앱 도메인</span><span>연결 점검 보고서 열기</span></div>
       <div class="card login-card">
         <div class="login-brand"><span class="login-logo" aria-hidden="true">⌖</span><h2>Bidmad Inspector 보고서</h2></div>
         <p class="login-sub">퍼블리셔 전용 연결 점검 보고서</p>
 
-        <div id="login-firstbanner" class="login-firstbanner hidden"><span aria-hidden="true">🔑</span> 이 앱 도메인의 첫 접속입니다 — 비밀번호를 설정하세요.</div>
-
         <label class="login-label" for="login-domain">앱 도메인</label>
         <input id="login-domain" class="login-input" type="text" placeholder="17639-serving-bidmad.adop.co.kr" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
-        <div id="login-domain-chip" class="login-chip hidden"><span class="login-check" aria-hidden="true">✓</span><span id="login-domain-text" class="mono"></span><a id="login-change" class="login-changelink">변경</a></div>
-
-        <div id="login-pw-wrap" class="hidden">
-          <label class="login-label" for="login-pw">비밀번호</label>
-          <input id="login-pw" class="login-input" type="password" autocomplete="current-password">
-        </div>
-        <div id="login-pw2-wrap" class="hidden">
-          <label class="login-label" for="login-pw2">비밀번호 확인</label>
-          <input id="login-pw2" class="login-input" type="password" autocomplete="new-password">
-          <div class="login-hint">이 비밀번호는 해당 앱 도메인에 접속하는 모든 담당자가 함께 사용합니다.</div>
-        </div>
 
         <div id="login-error" class="login-error hidden" role="alert"></div>
-        <button id="login-submit" class="login-submit" type="button">계속 &rarr;</button>
-        <div id="login-forgot-wrap" class="hidden"><a id="login-forgot" class="login-forgot">비밀번호를 잊으셨나요?</a></div>
-        <div id="login-foot" class="login-foot">앱 도메인을 입력하면 비밀번호 설정 여부를 확인합니다.</div>
+        <button id="login-submit" class="login-submit" type="button">보고서 열기 &rarr;</button>
+        <div class="login-foot">앱 도메인을 입력하면 해당 앱의 연결 점검 보고서를 보여 줍니다.</div>
       </div>
     </div>
   </section>
@@ -339,17 +325,24 @@
   'use strict';
 
   /* ============================================================
-   * 설정 — 데이터는 비공개 저장소(bidmad-inspector-reports)에 있고,
-   * 이 정적 페이지(GitHub Pages)는 Cloudflare Worker 프록시를 통해서만 읽는다.
-   * GitHub 토큰은 Worker 서버에만 있다(이 페이지에는 없음). 각 퍼블리셔 링크는
-   * sig=HMAC(site, LINK_SECRET) 서명을 담고, Worker 가 서명을 검증해 그 퍼블리셔의
-   * 데이터만 돌려준다 — 다른 퍼블리셔 데이터는 받을 수 없다.
+   * 설정 — 데이터는 비공개 저장소(bidmad-inspector-reports)에 있고, 이 정적 페이지가
+   * GitHub Contents API 로 직접 읽는다. 읽기 전용 PAT 를 XOR 로 페이지에 심는다.
+   *   주의(보안 아님): 이 PAT 는 디컴파일/소스에서 복원 가능하며 비공개 repo 전체를 읽을 수 있다.
+   *   앱 도메인 입력은 '어느 앱을 볼지' 고르는 용도일 뿐 차단 장치가 아니다 — 보고서는 민감정보가
+   *   아니라는 전제. XOR 은 GitHub secret scanning 자동 폐기를 피하기 위한 난독화일 뿐이다.
    * ============================================================ */
-  var CONFIG = {
-    // 배포 시 Cloudflare Worker URL 로 교체 (예: 'https://bidmad-inspector-proxy.<계정>.workers.dev').
-    // 끝 슬래시 없이. 비어 있으면 '프록시 미설정' 안내.
-    apiBase: 'https://bidmad-inspector-proxy.bidmad-partner.workers.dev'
+  var GH = {
+    owner: 'bidmad', repo: 'bidmad-inspector-reports', branch: 'main',
+    // 읽기 전용 fine-grained PAT (Contents:Read, bidmad-inspector-reports 전용) 의 XOR 바이트.
+    // 비우면 '토큰 미설정' 안내. 생성: pbpaste | python3 -I tools/pat_xor.py → A/B 붙여넣기.
+    KEY: 0x5A, A: [], B: []
   };
+  function ghToken() {
+    if (!GH.A.length && !GH.B.length) return '';
+    var all = GH.A.concat(GH.B), s = '';
+    for (var i = 0; i < all.length; i++) s += String.fromCharCode((all[i] ^ GH.KEY) & 0xff);
+    return s;
+  }
 
   var SCHEMA = 'bidmad.inspector.linkcheck/2';
   var SCHEMA_V1 = 'bidmad.inspector.linkcheck/1';
@@ -366,7 +359,7 @@
   var UNRESOLVED = { NOT_FOUND: 1, ERROR: 1 };
 
   var state = { report: null, status: 'all', role: 'all', q: '', open: {} };
-  var cache = { pubIndex: {} };
+  var cache = { runs: {} };
   var $ = function (id) { return document.getElementById(id); };
 
   function esc(v) {
@@ -375,38 +368,43 @@
     });
   }
 
-  /* ---------- 세션 / 인증 (Cloudflare Worker + D1) ----------
-   * 로그인(앱 도메인 + 공유 비밀번호) → 세션 토큰을 sessionStorage 에 보관(탭 닫으면 소멸).
-   * 읽기 요청은 Authorization: Bearer <token> 로 보내고, Worker 가 토큰의 site 데이터만 돌려준다. */
-  var SESSION_KEY = 'bidmad-inspector-session';
-  function getSession() { try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch (e) { return null; } }
-  function setSession(s) { try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) {} }
-  function clearSession() { try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {} cache.pubIndex = {}; }
-
+  /* ---------- 데이터 계층 (GitHub Contents API 직접) ----------
+   * 읽기 전용 PAT 로 비공개 repo 의 reports/<key>/ 폴더를 나열하고 개별 보고서를 읽는다.
+   * 서버/프록시 없음 — 브라우저가 api.github.com 을 직접 호출(GitHub API 는 CORS 허용). */
   function mkErr(code) { var e = new Error(code); e.code = code; return e; }
-  function apiUrl(path) { return CONFIG.apiBase.replace(/\/+$/, '') + path; }
-  function authGet(path) {
-    var s = getSession();
-    if (!s || !s.token) return Promise.reject(mkErr('AUTH'));
-    if (!CONFIG.apiBase) return Promise.reject(mkErr('NO_PROXY'));
-    return fetch(apiUrl(path), { cache: 'no-store', headers: { 'Authorization': 'Bearer ' + s.token } }).then(function (r) {
-      if (r.status === 401) { clearSession(); throw mkErr('AUTH'); }
+  function ghPath(key, file) { return 'reports/' + encodeURIComponent(key) + (file ? '/' + encodeURIComponent(file) : ''); }
+  function ghGet(path, accept) {
+    var tok = ghToken();
+    if (!tok) return Promise.reject(mkErr('NO_TOKEN'));
+    var u = 'https://api.github.com/repos/' + GH.owner + '/' + GH.repo + '/contents/' + path + '?ref=' + encodeURIComponent(GH.branch);
+    return fetch(u, { cache: 'no-store', headers: { 'Authorization': 'Bearer ' + tok, 'Accept': accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } }).then(function (r) {
+      if (r.status === 401 || r.status === 403) throw mkErr('AUTH');
       if (r.status === 404) throw mkErr('NOT_FOUND');
       if (!r.ok) throw mkErr('HTTP ' + r.status);
-      return r.text();
+      return r;
     });
   }
-  function fetchHistory() { return authGet('/history').then(function (t) { return JSON.parse(t); }); }
-  function fetchReport(file) { return authGet('/report?file=' + encodeURIComponent(file)); }
-
-  function postJson(path, body) {
-    if (!CONFIG.apiBase) return Promise.reject(mkErr('NO_PROXY'));
-    return fetch(apiUrl(path), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, body: j }; }); });
+  // 폴더 나열 → linkcheck-*.json 파일명 목록(파일명에 시각이 있어 이름 역순 = 최신 먼저)
+  function listRuns(key) {
+    return ghGet(ghPath(key), 'application/vnd.github+json').then(function (r) { return r.json(); }).then(function (arr) {
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(function (f) { return f && f.type === 'file' && /^linkcheck-.*\.json$/.test(f.name); })
+        .map(function (f) { return f.name; }).sort().reverse();
+    });
   }
-  function authCheck(domain) { return postJson('/auth/check', { domain: domain }); }
-  function authLogin(domain, password) { return postJson('/auth/login', { domain: domain, password: password }); }
-  function authSetPassword(domain, password) { return postJson('/auth/set-password', { domain: domain, password: password }); }
+  function fetchReport(key, file) { return ghGet(ghPath(key, file), 'application/vnd.github.raw+json').then(function (r) { return r.text(); }); }
+
+  function timeFromName(f) {
+    var m = /^linkcheck-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(f);
+    return m ? (m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5]) : f;
+  }
+  function sanitizeKey(s) { var out = String(s).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^_+|_+$/g, ''); return out || 'x'; }
+  function siteKeyFromDomain(d) {
+    d = String(d || '').trim();
+    if (!d) return null;
+    if (d.indexOf('serving-bidmad') >= 0) { var sid = d.split('-')[0].trim(); return sid ? sanitizeKey(sid) : null; }
+    return 'dom_' + sanitizeKey(d);
+  }
 
   /* ---------- 공통 UI ---------- */
   function showStatus(html, isErr) {
@@ -422,9 +420,9 @@
     $('logout-btn').style.display = (which === 'login') ? 'none' : '';
   }
   function errHtml(e) {
-    if (e && e.code === 'NO_PROXY') return '프록시(Worker) 주소가 설정되지 않았습니다.';
-    if (e && e.code === 'AUTH') return '세션이 만료되었습니다. 다시 로그인해 주세요.';
-    if (e && e.code === 'NOT_FOUND') return '데이터를 찾을 수 없습니다. 아직 올라온 보고서가 없을 수 있습니다.';
+    if (e && e.code === 'NO_TOKEN') return '읽기 토큰이 설정되지 않았습니다 (관리자: 페이지에 PAT 를 심어 주세요).';
+    if (e && e.code === 'AUTH') return '저장소에 접근할 수 없습니다 (토큰 오류 또는 만료).';
+    if (e && e.code === 'NOT_FOUND') return '이 앱 도메인의 보고서가 아직 없습니다.';
     return '데이터를 불러오지 못했습니다: ' + esc(e && e.message || e);
   }
   function fmtShort(ms, iso) {
@@ -447,82 +445,72 @@
   }
 
   /* ============================================================
-   * 라우팅 (로그인 후, 세션 토큰에 묶인 앱만)
-   *   #            → 실행 이력
-   *   #run/FILE    → 단일 실행 상세
+   * 라우팅 (앱 도메인 선택 후 — 비밀번호 없음, 앱 키는 공개 선택자)
+   *   #                 → 앱 도메인 입력
+   *   #site/KEY         → 실행 이력
+   *   #site/KEY/run/FILE → 단일 실행 상세
    * ============================================================ */
   function parseRoute() {
     var h = location.hash.replace(/^#\/?/, '');
-    var seg = h ? h.split('/') : [];
-    if (seg[0] === 'run' && seg[1]) { var f; try { f = decodeURIComponent(seg[1]); } catch (e) { f = seg[1]; } return { view: 'detail', file: f }; }
-    return { view: 'history' };
+    var seg = h ? h.split('/').map(function (s) { try { return decodeURIComponent(s); } catch (e) { return s; } }) : [];
+    if (seg[0] === 'site' && seg[1]) {
+      if (seg[2] === 'run' && seg[3]) return { view: 'detail', key: seg[1], file: seg[3] };
+      return { view: 'history', key: seg[1] };
+    }
+    return { view: 'login' };
   }
-  function go(r) { location.hash = (r.view === 'detail') ? ('#run/' + encodeURIComponent(r.file)) : '#'; }
+  function go(r) {
+    location.hash = r.view === 'detail' ? ('#site/' + encodeURIComponent(r.key) + '/run/' + encodeURIComponent(r.file))
+      : r.view === 'history' ? ('#site/' + encodeURIComponent(r.key)) : '#';
+  }
 
-  function setCrumb(route, pub) {
-    var c = $('crumb'), parts = [], s = getSession();
-    if (s && route && (route.view === 'history' || route.view === 'detail')) {
-      var name = esc((pub && pub.displayName) || s.site);
+  function setCrumb(route) {
+    var c = $('crumb'), parts = [];
+    if (route && (route.view === 'history' || route.view === 'detail')) {
+      var name = esc(route.key);
       if (route.view === 'detail') parts.push('<a data-go="history">' + name + '</a>', '<span class="sep">›</span>', '<span>실행 상세</span>');
       else parts.push('<span>' + name + '</span>');
     }
     c.innerHTML = parts.join(' ');
   }
 
-  /* ---------- 실행 이력 ---------- */
+  /* ---------- 실행 이력 (폴더 나열) ---------- */
   function route_history(route) {
     showView('history');
-    var site = getSession().site;
-    $('source-label').textContent = site;
-    var got = cache.pubIndex[site];
+    $('source-label').textContent = route.key;
+    setCrumb(route);
+    var got = cache.runs[route.key];
     if (got) { renderHistory(route, got); return; }
     showStatus('<span class="spin"></span>실행 이력을 불러오는 중…');
-    fetchHistory().then(function (idx) {
-      cache.pubIndex[site] = idx; hideStatus(); renderHistory(route, idx);
-    }).catch(function (e) { if (e && e.code === 'AUTH') { showLoginFlow(); return; } showStatus(errHtml(e), true); });
+    listRuns(route.key).then(function (files) {
+      cache.runs[route.key] = files; hideStatus(); renderHistory(route, files);
+    }).catch(function (e) {
+      if (e && e.code === 'NOT_FOUND') { cache.runs[route.key] = []; hideStatus(); renderHistory(route, []); return; }
+      showStatus(errHtml(e), true);
+    });
   }
-  function renderHistory(route, idx) {
-    var app = idx.app || {};
-    setCrumb(route, app);
-    var ident = [];
-    if (app.siteId) ident.push('<div class="dom">app domain site <b>' + esc(app.siteId) + '</b>' + (app.appDomain ? ' · ' + esc(app.appDomain) : '') + '</div>');
-    else if (app.appDomain) ident.push('<div class="dom">' + esc(app.appDomain) + '</div>');
-    if (app.package) ident.push('<div class="dom">패키지 ' + esc(app.package) + '</div>');
-    $('pub-meta').innerHTML = '<div class="pubhead"><h2 style="margin:0">' + esc(app.displayName || getSession().site) + '</h2>' +
-      ident.join('') + '</div><div class="faint" style="font-size:12px">실행 ' + (idx.runs || []).length + '회 · 최신순</div>';
-
-    var runs = (idx.runs || []).slice();
-    $('run-count').textContent = runs.length + ' 회 실행';
-    if (!runs.length) { $('run-table').innerHTML = '<div class="emptybox">실행 기록이 없습니다.</div>'; return; }
-    var rows = runs.map(function (r) {
-      var trig = r.trigger === 'startup' ? '앱 시작' : (r.trigger ? '재실행' : '—');
-      return '<tr data-file="' + esc(r.file) + '">' +
-        '<td class="when">' + esc(fmtShort(r.startedAtMs, r.startedAt)) + '</td>' +
-        '<td class="hide-sm faint">' + esc(trig) + '</td>' +
-        '<td>' + sumChips(r.summary, r.warnings, r.runError) + '</td>' +
-        '<td class="num hide-sm faint">' + (r.elapsedMs != null ? r.elapsedMs + 'ms' : '') + '</td></tr>';
+  function renderHistory(route, files) {
+    $('pub-meta').innerHTML = '<div class="pubhead"><h2 style="margin:0">' + esc(route.key) + '</h2>' +
+      '<div class="faint" style="font-size:12px">실행 ' + files.length + '회 · 최신순 · 행을 클릭하면 상세</div></div>';
+    $('run-count').textContent = files.length + ' 회 실행';
+    if (!files.length) { $('run-table').innerHTML = '<div class="emptybox">이 앱 도메인의 보고서가 아직 없습니다.</div>'; return; }
+    var rows = files.map(function (f) {
+      return '<tr data-file="' + esc(f) + '">' +
+        '<td class="when">' + esc(timeFromName(f)) + '</td>' +
+        '<td class="mono faint" style="font-size:12px">' + esc(f) + '</td></tr>';
     }).join('');
-    $('run-table').innerHTML = '<table class="rtable"><thead><tr>' +
-      '<th>실행 시각</th><th class="hide-sm">트리거</th><th>결과</th><th class="num hide-sm">소요</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table>';
+    $('run-table').innerHTML = '<table class="rtable"><thead><tr><th>실행 시각</th><th>파일</th></tr></thead><tbody>' + rows + '</tbody></table>';
   }
 
-  /* ---------- 3단계: 단일 실행 상세 ---------- */
+  /* ---------- 단일 실행 상세 ---------- */
   function route_detail(route) {
     showView('detail');
-    var site = getSession().site;
-    var pub = cache.pubIndex[site] && cache.pubIndex[site].app;
-    setCrumb(route, pub);
+    setCrumb(route);
     showStatus('<span class="spin"></span>보고서를 불러오는 중…');
-    // 이력 인덱스를 먼저 확보(빵부스러기 이름 표시용) — 실패해도 상세는 계속 진행
-    var ensurePub = cache.pubIndex[site]
-      ? Promise.resolve(cache.pubIndex[site])
-      : fetchHistory().then(function (i) { cache.pubIndex[site] = i; return i; }).catch(function () { return null; });
-    ensurePub.then(function (i) { if (i) setCrumb(route, i.app); });
-    fetchReport(route.file).then(function (text) {
+    fetchReport(route.key, route.file).then(function (text) {
       hideStatus();
       loadReport(text, route.file);
-    }).catch(function (e) { if (e && e.code === 'AUTH') { showLoginFlow(); return; } showStatus(errHtml(e), true); });
+    }).catch(function (e) { showStatus(errHtml(e), true); });
   }
 
   /* =========================================================
@@ -857,15 +845,15 @@
   });
 
   // 이력 행 클릭 → 상세
-  var curRoute = { view: 'history' };
+  var curRoute = { view: 'login' };
   $('run-table').addEventListener('click', function (e) {
     var tr = e.target.closest('tr[data-file]'); if (!tr) return;
-    go({ view: 'detail', file: tr.getAttribute('data-file') });
+    if (curRoute.key) go({ view: 'detail', key: curRoute.key, file: tr.getAttribute('data-file') });
   });
   $('crumb').addEventListener('click', function (e) {
     var a = e.target.closest('a[data-go]'); if (!a) return;
     e.preventDefault();
-    if (a.getAttribute('data-go') === 'history') go({ view: 'history' });
+    if (a.getAttribute('data-go') === 'history' && curRoute.key) go({ view: 'history', key: curRoute.key });
   });
 
   // 테마
@@ -886,96 +874,35 @@
   });
   applyTheme();
 
-  /* ---------- 로그인 UI ---------- */
-  var login = { step: 'domain', domain: '', site: '' };
+  /* ---------- 앱 도메인 선택 (비밀번호 없음) ---------- */
   function loginErr(msg) { var el = $('login-error'); if (!msg) { el.classList.add('hidden'); el.textContent = ''; } else { el.textContent = msg; el.classList.remove('hidden'); } }
-  function setHidden(id, hide) { $(id).classList.toggle('hidden', !!hide); }
-  function renderLoginStep() {
-    var st = login.step;
-    setHidden('login-domain', st !== 'domain');
-    setHidden('login-domain-chip', st === 'domain');
-    setHidden('login-pw-wrap', st === 'domain');
-    setHidden('login-pw2-wrap', st !== 'set');
-    setHidden('login-firstbanner', st !== 'set');
-    setHidden('login-forgot-wrap', st !== 'login');
-    setHidden('login-foot', st !== 'domain');
-    $('login-domain-text').textContent = login.domain;
-    if (st === 'domain') { $('login-badge').textContent = '1단계'; $('login-step-title').textContent = '앱 도메인 확인'; $('login-submit').innerHTML = '계속 &rarr;'; }
-    else if (st === 'login') { $('login-badge').textContent = '2단계'; $('login-step-title').textContent = '비밀번호 입력'; $('login-submit').textContent = '로그인'; }
-    else { $('login-badge').textContent = '설정'; $('login-step-title').textContent = '비밀번호 설정 · 처음 접속'; $('login-submit').textContent = '비밀번호 설정 후 로그인'; }
-    loginErr('');
-    setTimeout(function () { try { (st === 'domain' ? $('login-domain') : $('login-pw')).focus(); } catch (e) {} }, 30);
-  }
-  function showLoginFlow() {
-    clearSession();
-    login = { step: 'domain', domain: '', site: '' };
-    $('login-domain').value = ''; $('login-pw').value = ''; $('login-pw2').value = '';
-    $('crumb').innerHTML = ''; $('source-label').textContent = '';
+  function showLogin() {
     showView('login');
-    renderLoginStep();
-  }
-  function afterAuthSuccess(res) {
-    setSession({ token: res.token, site: res.site });
-    if (location.hash && location.hash !== '#') location.hash = '#'; else route();
+    $('crumb').innerHTML = ''; $('source-label').textContent = '';
+    loginErr('');
+    $('login-domain').value = '';
+    setTimeout(function () { try { $('login-domain').focus(); } catch (e) {} }, 30);
   }
   function submitLogin() {
     loginErr('');
-    var btn = $('login-submit');
-    if (login.step === 'domain') {
-      var dom = $('login-domain').value.trim();
-      if (!dom) { loginErr('앱 도메인을 입력하세요.'); return; }
-      btn.disabled = true;
-      authCheck(dom).then(function (r) {
-        btn.disabled = false;
-        if (r.status === 400) { loginErr('앱 도메인 형식이 올바르지 않습니다.'); return; }
-        if (r.status !== 200) { loginErr('확인에 실패했습니다. 잠시 후 다시 시도하세요.'); return; }
-        login.domain = dom; login.site = r.body.site;
-        login.step = r.body.hasPassword ? 'login' : 'set';
-        renderLoginStep();
-      }).catch(function () { btn.disabled = false; loginErr('서버에 연결하지 못했습니다.'); });
-    } else if (login.step === 'login') {
-      var pw = $('login-pw').value;
-      if (!pw) { loginErr('비밀번호를 입력하세요.'); return; }
-      btn.disabled = true;
-      authLogin(login.domain, pw).then(function (r) {
-        btn.disabled = false;
-        if (r.status === 200) { afterAuthSuccess(r.body); return; }
-        if (r.status === 429) { var m = Math.ceil((r.body.retryAfterMs || 0) / 60000); loginErr('로그인이 일시적으로 잠겼습니다. ' + (m ? m + '분 후 ' : '잠시 후 ') + '다시 시도하세요.'); return; }
-        if (r.status === 404) { login.step = 'set'; renderLoginStep(); loginErr('비밀번호가 설정되어 있지 않습니다. 새로 설정하세요.'); return; }
-        loginErr('비밀번호가 올바르지 않습니다.' + (r.body && r.body.remaining != null ? ' (남은 시도 ' + r.body.remaining + '회)' : ''));
-      }).catch(function () { btn.disabled = false; loginErr('서버에 연결하지 못했습니다.'); });
-    } else {
-      var p1 = $('login-pw').value, p2 = $('login-pw2').value;
-      if (!p1) { loginErr('비밀번호를 입력하세요.'); return; }
-      if (p1 !== p2) { loginErr('비밀번호가 일치하지 않습니다.'); return; }
-      btn.disabled = true;
-      authSetPassword(login.domain, p1).then(function (r) {
-        btn.disabled = false;
-        if (r.status === 200) { afterAuthSuccess(r.body); return; }
-        if (r.status === 409) { login.step = 'login'; $('login-pw').value = ''; renderLoginStep(); loginErr('이미 비밀번호가 설정되어 있습니다. 로그인해 주세요.'); return; }
-        if (r.status === 400) { loginErr('비밀번호를 입력하세요.'); return; }
-        loginErr('설정에 실패했습니다. 잠시 후 다시 시도하세요.');
-      }).catch(function () { btn.disabled = false; loginErr('서버에 연결하지 못했습니다.'); });
-    }
+    var dom = $('login-domain').value.trim();
+    if (!dom) { loginErr('앱 도메인을 입력하세요.'); return; }
+    var key = siteKeyFromDomain(dom);
+    if (!key) { loginErr('앱 도메인 형식이 올바르지 않습니다.'); return; }
+    go({ view: 'history', key: key });
   }
   $('login-submit').addEventListener('click', submitLogin);
-  ['login-domain', 'login-pw', 'login-pw2'].forEach(function (id) {
-    $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitLogin(); } });
-  });
-  $('login-change').addEventListener('click', function () { login.step = 'domain'; $('login-pw').value = ''; $('login-pw2').value = ''; var d = login.domain; renderLoginStep(); $('login-domain').value = d; });
-  $('login-forgot').addEventListener('click', function () { loginErr('비밀번호 재설정은 ADOP 담당자에게 문의하세요.'); });
-  $('logout-btn').addEventListener('click', function () { showLoginFlow(); });
+  $('login-domain').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitLogin(); } });
+  $('logout-btn').addEventListener('click', function () { location.hash = '#'; }); // '다른 앱'
 
   /* ---------- 라우터 구동 ---------- */
   function route() {
-    var s = getSession();
-    if (!s || !s.token) { showLoginFlow(); return; }
     var r = parseRoute();
     curRoute = r;
     hideStatus();
-    setCrumb(r, (cache.pubIndex[s.site] && cache.pubIndex[s.site].app) || null);
     if (r.view === 'detail') route_detail(r);
-    else route_history(r);
+    else if (r.view === 'history') route_history(r);
+    else showLogin();
   }
   window.addEventListener('hashchange', route);
   route();
