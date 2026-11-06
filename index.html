@@ -210,13 +210,10 @@
 
   <div id="status" class="statusmsg hidden"></div>
 
-  <!-- 1단계: 퍼블리셔(앱) 목록 -->
-  <section id="view-list" class="hidden">
-    <div class="toolbar">
-      <input type="search" id="pub-q" placeholder="퍼블리셔·앱 도메인·패키지 검색" aria-label="퍼블리셔 검색">
-      <span class="count" id="pub-count"></span>
-    </div>
-    <div id="pub-table"></div>
+  <!-- 진입 안내 — 퍼블리셔 목록 없음 (앱 전용 링크로만 접근, 다른 앱 노출 방지) -->
+  <section id="view-landing" class="hidden">
+    <div class="statusmsg">이 페이지는 <b>앱 전용 링크</b>로 접속해야 합니다.<br>
+      담당자에게 받은 링크(<span class="mono">…/#site/&lt;앱 키&gt;</span>)로 다시 열어 주세요.</div>
   </section>
 
   <!-- 2단계: 실행 이력 -->
@@ -326,7 +323,7 @@
   var UNRESOLVED = { NOT_FOUND: 1, ERROR: 1 };
 
   var state = { report: null, status: 'all', role: 'all', q: '', open: {} };
-  var cache = { topIndex: null, pubIndex: {} };
+  var cache = { pubIndex: {} };
   var $ = function (id) { return document.getElementById(id); };
 
   function esc(v) {
@@ -377,7 +374,7 @@
   }
   function hideStatus() { $('status').classList.add('hidden'); }
   function showView(which) {
-    ['list', 'history', 'detail'].forEach(function (v) {
+    ['landing', 'history', 'detail'].forEach(function (v) {
       $('view-' + v).classList.toggle('hidden', v !== which);
     });
   }
@@ -409,96 +406,40 @@
   }
 
   /* ============================================================
-   * 라우팅  (해시 경로로 세 단계를 구분)
-   *   #            또는 #list                  → 퍼블리셔 목록
-   *   #list/site/KEY                           → 실행 이력 (목록에서 진입, 뒤로가기 있음)
-   *   #list/site/KEY/run/FILE                  → 상세
-   *   #site/KEY                                → 실행 이력 (퍼블리셔 전용 링크, 목록으로 못 감)
-   *   #site/KEY/run/FILE                       → 상세
+   * 라우팅  (퍼블리셔 목록 없음 — 앱 전용 링크로만 접근)
+   *   #            또는 그 외                    → 진입 안내(landing)
+   *   #site/KEY                                 → 실행 이력
+   *   #site/KEY/run/FILE                        → 상세
+   *   (레거시 #list/site/KEY… 도 같은 앱으로 매핑; #list 단독은 landing)
    * ============================================================ */
   function parseRoute() {
     var h = location.hash.replace(/^#\/?/, '');
     var seg = h ? h.split('/').map(function (s) { try { return decodeURIComponent(s); } catch (e) { return s; } }) : [];
-    if (!seg.length || seg[0] === 'list') {
-      if (seg[0] === 'list' && seg[1] === 'site' && seg[2]) {
-        if (seg[3] === 'run' && seg[4]) return { view: 'detail', key: seg[2], file: seg[4], scoped: false };
-        return { view: 'history', key: seg[2], scoped: false };
-      }
-      return { view: 'list' };
-    }
+    if (seg[0] === 'list') seg = seg.slice(1); // 레거시 #list/site/… 호환
     if (seg[0] === 'site' && seg[1]) {
-      if (seg[2] === 'run' && seg[3]) return { view: 'detail', key: seg[1], file: seg[3], scoped: true };
-      return { view: 'history', key: seg[1], scoped: true };
+      if (seg[2] === 'run' && seg[3]) return { view: 'detail', key: seg[1], file: seg[3] };
+      return { view: 'history', key: seg[1] };
     }
-    return { view: 'list' };
+    return { view: 'landing' };
   }
   function hashFor(r) {
-    if (r.view === 'list') return '#list';
-    var pre = r.scoped ? '#site/' + encodeURIComponent(r.key) : '#list/site/' + encodeURIComponent(r.key);
-    if (r.view === 'detail') return pre + '/run/' + encodeURIComponent(r.file);
-    return pre;
+    if (r.view === 'detail') return '#site/' + encodeURIComponent(r.key) + '/run/' + encodeURIComponent(r.file);
+    if (r.view === 'history') return '#site/' + encodeURIComponent(r.key);
+    return '#';
   }
   function go(r) { location.hash = hashFor(r); }
 
   function setCrumb(route, pub) {
     var c = $('crumb'), parts = [];
-    if (route.scoped) {
-      parts.push('<span>' + esc(pub && pub.displayName || route.key) + '</span>');
-      if (route.view === 'detail') parts.push('<span class="sep">›</span><span>실행 상세</span>');
-    } else {
-      parts.push('<a data-go="list">전체 퍼블리셔</a>');
-      if (route.view === 'history' || route.view === 'detail') {
-        parts.push('<span class="sep">›</span>');
-        if (route.view === 'detail') parts.push('<a data-go="history">' + esc(pub && pub.displayName || route.key) + '</a>');
-        else parts.push('<span>' + esc(pub && pub.displayName || route.key) + '</span>');
-      }
-      if (route.view === 'detail') parts.push('<span class="sep">›</span><span>실행 상세</span>');
+    if (route.view === 'history' || route.view === 'detail') {
+      var name = esc(pub && pub.displayName || route.key);
+      if (route.view === 'detail') parts.push('<a data-go="history">' + name + '</a>', '<span class="sep">›</span>', '<span>실행 상세</span>');
+      else parts.push('<span>' + name + '</span>');
     }
     c.innerHTML = parts.join(' ');
   }
 
-  /* ---------- 1단계: 퍼블리셔 목록 ---------- */
-  var pubFilter = '';
-  function route_list() {
-    showView('list');
-    $('source-label').textContent = '';
-    if (cache.topIndex) { renderPubs(); return; }
-    showStatus('<span class="spin"></span>퍼블리셔 목록을 불러오는 중…');
-    fetchJson('index.json').then(function (idx) {
-      cache.topIndex = idx; hideStatus(); renderPubs();
-    }).catch(function (e) {
-      if (e.code === 'NOT_FOUND') { cache.topIndex = { publishers: [] }; hideStatus(); renderPubs(); return; }
-      showStatus(errHtml(e), true);
-    });
-  }
-  function renderPubs() {
-    var pubs = (cache.topIndex.publishers || []).slice();
-    var q = pubFilter.trim().toLowerCase();
-    if (q) pubs = pubs.filter(function (p) {
-      return [p.displayName, p.appDomain, p.package, p.siteId, p.key].join('\n').toLowerCase().indexOf(q) >= 0;
-    });
-    $('pub-count').textContent = pubs.length + ' / ' + (cache.topIndex.publishers || []).length + ' 퍼블리셔';
-    if (!pubs.length) {
-      $('pub-table').innerHTML = '<div class="emptybox">' +
-        ((cache.topIndex.publishers || []).length ? '검색과 맞는 퍼블리셔가 없습니다.' : '아직 올라온 보고서가 없습니다.') + '</div>';
-      return;
-    }
-    var rows = pubs.map(function (p) {
-      var lt = p.latest || {};
-      var ident = p.siteId ? ('site ' + esc(p.siteId)) : (p.appDomain ? esc(p.appDomain) : esc(p.package || p.key));
-      return '<tr data-key="' + esc(p.key) + '">' +
-        '<td><div class="pname">' + esc(p.displayName || p.key) + '</div>' +
-        '<div class="psub">' + ident + (p.package && !p.siteId ? '' : (p.package ? ' · <span class="mono">' + esc(p.package) + '</span>' : '')) + '</div></td>' +
-        '<td class="when hide-sm">' + esc(fmtShort(lt.startedAtMs, lt.startedAt)) + '</td>' +
-        '<td>' + sumChips(lt.summary, lt.warnings, lt.runError) + '</td>' +
-        '<td class="num hide-sm">' + (p.runCount || 0) + '회</td></tr>';
-    }).join('');
-    $('pub-table').innerHTML = '<table class="rtable"><thead><tr>' +
-      '<th>퍼블리셔 (앱)</th><th class="hide-sm">최근 실행</th><th>최근 결과</th><th class="num hide-sm">실행</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table>';
-  }
-
-  /* ---------- 2단계: 실행 이력 ---------- */
+  /* ---------- 실행 이력 ---------- */
   function route_history(route) {
     showView('history');
     $('source-label').textContent = '';
@@ -883,28 +824,16 @@
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
-  // 목록/이력 행 클릭 → 라우팅
-  var curRoute = { view: 'list' };
-  $('pub-table').addEventListener('click', function (e) {
-    var tr = e.target.closest('tr[data-key]'); if (!tr) return;
-    go({ view: 'history', key: tr.getAttribute('data-key'), scoped: false });
-  });
+  // 이력 행 클릭 → 상세
+  var curRoute = { view: 'landing' };
   $('run-table').addEventListener('click', function (e) {
     var tr = e.target.closest('tr[data-file]'); if (!tr) return;
-    go({ view: 'detail', key: curRoute.key, file: tr.getAttribute('data-file'), scoped: curRoute.scoped });
+    go({ view: 'detail', key: curRoute.key, file: tr.getAttribute('data-file') });
   });
   $('crumb').addEventListener('click', function (e) {
     var a = e.target.closest('a[data-go]'); if (!a) return;
     e.preventDefault();
-    var to = a.getAttribute('data-go');
-    if (to === 'list') go({ view: 'list' });
-    else if (to === 'history') go({ view: 'history', key: curRoute.key, scoped: curRoute.scoped });
-  });
-  var pubQTimer = null;
-  $('pub-q').addEventListener('input', function (e) {
-    clearTimeout(pubQTimer);
-    var v = e.target.value;
-    pubQTimer = setTimeout(function () { pubFilter = v; renderPubs(); }, 120);
+    if (a.getAttribute('data-go') === 'history') go({ view: 'history', key: curRoute.key });
   });
 
   // 테마
@@ -931,9 +860,9 @@
     curRoute = r;
     hideStatus();
     setCrumb(r, (cache.pubIndex[r.key] && cache.pubIndex[r.key].app) || null);
-    if (r.view === 'list') route_list();
-    else if (r.view === 'history') route_history(r);
+    if (r.view === 'history') route_history(r);
     else if (r.view === 'detail') route_detail(r);
+    else { showView('landing'); $('source-label').textContent = ''; }
   }
   window.addEventListener('hashchange', route);
   route();
