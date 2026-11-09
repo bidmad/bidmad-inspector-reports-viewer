@@ -413,52 +413,47 @@
   }
 
   /* ============================================================
-   * 라우팅 (앱 도메인 선택 후 — 비밀번호 없음, 앱 키는 공개 선택자)
-   *   #                 → 앱 도메인 입력
-   *   #site/KEY         → 실행 이력
-   *   #site/KEY/run/FILE → 단일 실행 상세
+   * 내비게이션 — 앱 키(폴더 idx)·실행 파일명을 URL 에 노출하지 않는다.
+   * 선택한 앱 키/도메인은 localStorage + 메모리에만 두고, 화면 전환은 함수 호출로 한다.
+   * (URL 로 키를 넘길 수 없게 해서 키 열거·추측 공격과 히스토리/리퍼러 유출을 막는다.)
    * ============================================================ */
-  function parseRoute() {
-    var h = location.hash.replace(/^#\/?/, '');
-    var seg = h ? h.split('/').map(function (s) { try { return decodeURIComponent(s); } catch (e) { return s; } }) : [];
-    if (seg[0] === 'site' && seg[1]) {
-      if (seg[2] === 'run' && seg[3]) return { view: 'detail', key: seg[1], file: seg[3] };
-      return { view: 'history', key: seg[1] };
-    }
-    return { view: 'login' };
+  var LS_KEY = 'linkcheck-key', LS_DOMAIN = 'linkcheck-domain';
+  var nav = { view: 'login', key: null, domain: null, file: null };
+  function persistNav() {
+    try {
+      if (nav.key) { localStorage.setItem(LS_KEY, nav.key); localStorage.setItem(LS_DOMAIN, nav.domain || ''); }
+      else { localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_DOMAIN); }
+    } catch (e) {}
   }
-  function go(r) {
-    location.hash = r.view === 'detail' ? ('#site/' + encodeURIComponent(r.key) + '/run/' + encodeURIComponent(r.file))
-      : r.view === 'history' ? ('#site/' + encodeURIComponent(r.key)) : '#';
-  }
-
-  function setCrumb(route) {
+  function setCrumb() {
     var c = $('crumb'), parts = [];
-    if (route && (route.view === 'history' || route.view === 'detail')) {
-      var name = esc(route.key);
-      if (route.view === 'detail') parts.push('<a data-go="history">' + name + '</a>', '<span class="sep">›</span>', '<span>실행 상세</span>');
+    if (nav.view === 'history' || nav.view === 'detail') {
+      var name = esc(nav.domain || nav.key || '');
+      if (nav.view === 'detail') parts.push('<a data-go="history">' + name + '</a>', '<span class="sep">›</span>', '<span>실행 상세</span>');
       else parts.push('<span>' + name + '</span>');
     }
     c.innerHTML = parts.join(' ');
   }
 
   /* ---------- 실행 이력 (폴더 나열) ---------- */
-  function route_history(route) {
+  function openHistory(key, domain) {
+    nav.view = 'history'; nav.key = key; if (domain != null) nav.domain = domain; nav.file = null;
+    persistNav();
     showView('history');
-    $('source-label').textContent = route.key;
-    setCrumb(route);
-    var got = cache.runs[route.key];
-    if (got) { renderHistory(route, got); return; }
+    $('source-label').textContent = nav.domain || key;
+    setCrumb();
+    var got = cache.runs[key];
+    if (got) { renderHistory(key, got); return; }
     showStatus('<span class="spin"></span>실행 이력을 불러오는 중…');
-    listRuns(route.key).then(function (files) {
-      cache.runs[route.key] = files; hideStatus(); renderHistory(route, files);
+    listRuns(key).then(function (files) {
+      cache.runs[key] = files; hideStatus(); renderHistory(key, files);
     }).catch(function (e) {
-      if (e && e.code === 'NOT_FOUND') { cache.runs[route.key] = []; hideStatus(); renderHistory(route, []); return; }
+      if (e && e.code === 'NOT_FOUND') { cache.runs[key] = []; hideStatus(); renderHistory(key, []); return; }
       showStatus(errHtml(e), true);
     });
   }
-  function renderHistory(route, files) {
-    $('pub-meta').innerHTML = '<div class="pubhead"><h2 style="margin:0">' + esc(route.key) + '</h2>' +
+  function renderHistory(key, files) {
+    $('pub-meta').innerHTML = '<div class="pubhead"><h2 style="margin:0">' + esc(nav.domain || key) + '</h2>' +
       '<div class="faint" style="font-size:12px">실행 ' + files.length + '회 · 최신순 · 행을 클릭하면 상세</div></div>';
     $('run-count').textContent = files.length + ' 회 실행';
     if (!files.length) { $('run-table').innerHTML = '<div class="emptybox">이 앱 도메인의 보고서가 아직 없습니다.</div>'; return; }
@@ -471,14 +466,22 @@
   }
 
   /* ---------- 단일 실행 상세 ---------- */
-  function route_detail(route) {
+  function openDetail(file) {
+    if (!nav.key) return;
+    nav.view = 'detail'; nav.file = file;
+    persistNav();
     showView('detail');
-    setCrumb(route);
+    setCrumb();
     showStatus('<span class="spin"></span>보고서를 불러오는 중…');
-    fetchReport(route.key, route.file).then(function (text) {
+    fetchReport(nav.key, file).then(function (text) {
       hideStatus();
-      loadReport(text, route.file);
+      loadReport(text, file);
     }).catch(function (e) { showStatus(errHtml(e), true); });
+  }
+  function openLogin() {
+    nav.view = 'login'; nav.key = null; nav.domain = null; nav.file = null;
+    persistNav();
+    showLogin();
   }
 
   /* =========================================================
@@ -750,15 +753,14 @@
   });
 
   // 이력 행 클릭 → 상세
-  var curRoute = { view: 'login' };
   $('run-table').addEventListener('click', function (e) {
     var tr = e.target.closest('tr[data-file]'); if (!tr) return;
-    if (curRoute.key) go({ view: 'detail', key: curRoute.key, file: tr.getAttribute('data-file') });
+    openDetail(tr.getAttribute('data-file'));
   });
   $('crumb').addEventListener('click', function (e) {
     var a = e.target.closest('a[data-go]'); if (!a) return;
     e.preventDefault();
-    if (a.getAttribute('data-go') === 'history' && curRoute.key) go({ view: 'history', key: curRoute.key });
+    if (a.getAttribute('data-go') === 'history' && nav.key) openHistory(nav.key, nav.domain);
   });
 
   // 테마
@@ -794,23 +796,20 @@
     if (!dom) { loginErr('앱 도메인을 입력하세요.'); return; }
     var key = siteKeyFromDomain(dom);
     if (!key) { loginErr('앱 도메인 형식이 올바르지 않습니다.'); return; }
-    go({ view: 'history', key: key });
+    openHistory(key, dom);
   }
   $('login-submit').addEventListener('click', submitLogin);
   $('login-domain').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitLogin(); } });
-  $('logout-btn').addEventListener('click', function () { location.hash = '#'; }); // '다른 앱'
+  $('logout-btn').addEventListener('click', openLogin); // '다른 앱'
 
-  /* ---------- 라우터 구동 ---------- */
-  function route() {
-    var r = parseRoute();
-    curRoute = r;
-    hideStatus();
-    if (r.view === 'detail') route_detail(r);
-    else if (r.view === 'history') route_history(r);
-    else showLogin();
-  }
-  window.addEventListener('hashchange', route);
-  route();
+  /* ---------- 시작 (URL 에 키 노출 없음 — 들어온 해시는 제거하고 localStorage 에서 복원) ---------- */
+  (function boot() {
+    if (location.hash) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
+    var key = null, domain = null;
+    try { key = localStorage.getItem(LS_KEY); domain = localStorage.getItem(LS_DOMAIN); } catch (e) {}
+    if (key) { nav.domain = domain || null; openHistory(key, domain || null); }
+    else openLogin();
+  })();
 })();
 </script>
 </body>
