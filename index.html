@@ -374,13 +374,22 @@
     var m = /^linkcheck-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(f);
     return m ? (m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5]) : f;
   }
-  function sanitizeKey(s) { var out = String(s).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^_+|_+$/g, ''); return out || 'x'; }
-  // GitHubReportSink.siteKey 와 동일 규칙: serving-bidmad 면 siteId(앞 토큰), 아니면 dom_<도메인>
+  // GitHubReportSink.siteIdKey / domainKey 와 동일 규칙 — 키는 reports/ 아래 경로 한 조각으로만 쓰인다.
+  // siteId 는 [A-Za-z0-9_-] 만(점 불가 → "." / ".." 가 될 수 없음), 도메인은 [A-Za-z0-9._-] 만 남기고,
+  // 영숫자가 하나도 남지 않으면 유효한 키가 아니다(null).
+  function keyOf(raw, disallowed) {
+    var out = String(raw == null ? '' : raw).trim().replace(disallowed, '_').replace(/^_+|_+$/g, '');
+    return /[A-Za-z0-9]/.test(out) ? out : null;
+  }
+  function siteIdKey(s) { return keyOf(s, /[^A-Za-z0-9_-]/g); }
+  function domainKey(s) { return keyOf(s, /[^A-Za-z0-9._-]/g); }
+  // GitHubReportSink.siteKey 와 동일: serving-bidmad 면 siteId(앞 토큰) 우선, 유효하지 않으면 dom_<도메인>, 그것도 안 되면 null
   function siteKeyFromDomain(d) {
     d = String(d || '').trim();
     if (!d) return null;
-    if (d.indexOf('serving-bidmad') >= 0) { var sid = d.split('-')[0].trim(); return sid ? sanitizeKey(sid) : null; }
-    return 'dom_' + sanitizeKey(d);
+    if (d.indexOf('serving-bidmad') >= 0) { var sid = siteIdKey(d.split('-')[0]); if (sid) return sid; }
+    var dom = domainKey(d);
+    return dom ? 'dom_' + dom : null;
   }
 
   /* ---------- 공통 UI ---------- */
