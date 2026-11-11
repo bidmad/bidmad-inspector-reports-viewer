@@ -170,6 +170,8 @@
   .help dt { font-weight: 600; }
   .help dd { margin: 0; color: var(--muted); }
   .hidden { display: none !important; }
+  /* 새 데이터를 불러오는 동안에는 이전에 그려 둔 내용을 보이지 않게 한다 (상태 메시지만 표시) */
+  .loading > * { display: none !important; }
   .banner { border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; background: var(--warn-bg); color: var(--warn); }
 
   @media (max-width: 760px) {
@@ -425,6 +427,8 @@
    * ============================================================ */
   var LS_KEY = 'linkcheck-key', LS_DOMAIN = 'linkcheck-domain';
   var nav = { view: 'login', key: null, domain: null, file: null };
+  // 화면을 열 때마다 증가. 응답이 도착했을 때 번호가 다르면 이미 다른 화면으로 넘어간 것이므로 그 응답은 버린다.
+  var reqSeq = 0;
   function persistNav() {
     try {
       if (nav.key) { localStorage.setItem(LS_KEY, nav.key); localStorage.setItem(LS_DOMAIN, nav.domain || ''); }
@@ -446,20 +450,27 @@
   function openHistory(key, domain) {
     nav.view = 'history'; nav.key = key; if (domain != null) nav.domain = domain; nav.file = null;
     persistNav();
+    var seq = ++reqSeq;
     showView('history');
     $('source-label').textContent = nav.domain || key;
     setCrumb();
     var got = cache.runs[key];
     if (got) { renderHistory(key, got); return; }
+    $('view-history').classList.add('loading'); // 이전 앱의 이력이 잠깐 보이지 않게
     showStatus('<span class="spin"></span>실행 이력을 불러오는 중…');
     listRuns(key).then(function (files) {
-      cache.runs[key] = files; hideStatus(); renderHistory(key, files);
+      cache.runs[key] = files;
+      if (seq !== reqSeq) return;
+      hideStatus(); renderHistory(key, files);
     }).catch(function (e) {
-      if (e && e.code === 'NOT_FOUND') { cache.runs[key] = []; hideStatus(); renderHistory(key, []); return; }
+      if (e && e.code === 'NOT_FOUND') cache.runs[key] = [];
+      if (seq !== reqSeq) return;
+      if (e && e.code === 'NOT_FOUND') { hideStatus(); renderHistory(key, []); return; }
       showStatus(errHtml(e), true);
     });
   }
   function renderHistory(key, files) {
+    $('view-history').classList.remove('loading');
     $('pub-meta').innerHTML = '<div class="pubrow"><div class="pubhead"><h2 style="margin:0;overflow-wrap:anywhere">' + esc(nav.domain || key) + '</h2>' +
       '<div class="faint" style="font-size:12px">실행 ' + files.length + '회 · 최신순 · 행을 클릭하면 상세</div></div>' +
       '<button class="btn primary" type="button" data-go="login">다른 앱 도메인 입력</button></div>';
@@ -478,17 +489,22 @@
     if (!nav.key) return;
     nav.view = 'detail'; nav.file = file;
     persistNav();
+    var seq = ++reqSeq;
+    $('view-detail').classList.add('loading'); // 이전에 본 보고서가 새 보고서를 받기 전까지 보이지 않게
+    $('source-label').textContent = file;
     showView('detail');
     setCrumb();
     showStatus('<span class="spin"></span>보고서를 불러오는 중…');
     fetchReport(nav.key, file).then(function (text) {
+      if (seq !== reqSeq) return;
       hideStatus();
       loadReport(text, file);
-    }).catch(function (e) { showStatus(errHtml(e), true); });
+    }).catch(function (e) { if (seq === reqSeq) showStatus(errHtml(e), true); });
   }
   function openLogin() {
     nav.view = 'login'; nav.key = null; nav.domain = null; nav.file = null;
     persistNav();
+    reqSeq++;
     showLogin();
   }
 
@@ -554,6 +570,7 @@
     $('q').value = ''; setSeg('status-filter', 'all'); setSeg('role-filter', 'all');
     $('source-label').textContent = label || '';
     render();
+    $('view-detail').classList.remove('loading'); // 새 보고서를 다 그린 뒤에만 보이게 한다
     window.scrollTo(0, 0);
   }
 
