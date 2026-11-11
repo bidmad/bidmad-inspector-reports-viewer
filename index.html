@@ -96,7 +96,8 @@
   .rtable tbody tr { cursor: pointer; }
   .rtable tbody tr:hover td { background: var(--surface-2); }
   .rtable .when { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .pubhead { display: flex; flex-direction: column; gap: 3px; margin-bottom: 4px; }
+  .pubhead { display: flex; flex-direction: column; gap: 3px; margin-bottom: 4px; min-width: 0; }
+  .pubrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .emptybox { color: var(--muted); padding: 24px; text-align: center; }
 
   /* ---- 상세 보고서(단일 실행) ---- */
@@ -204,7 +205,7 @@
       <span class="muted" id="source-label"></span>
     </div>
     <div style="display:flex; gap:8px;">
-      <button class="btn" id="logout-btn" type="button" title="다른 앱 도메인 입력" style="display:none">다른 앱</button>
+      <button class="btn" id="logout-btn" type="button" title="다른 앱 도메인을 입력합니다" style="display:none">앱 도메인 변경</button>
       <button class="btn" id="theme-btn" type="button" title="화면 테마 전환">테마</button>
     </div>
   </div>
@@ -221,7 +222,7 @@
         <p class="login-sub">퍼블리셔 전용 연결 점검 보고서</p>
 
         <label class="login-label" for="login-domain">앱 도메인</label>
-        <input id="login-domain" class="login-input" type="text" placeholder="17639-serving-bidmad.adop.co.kr" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
+        <input id="login-domain" class="login-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
 
         <div id="login-error" class="login-error hidden" role="alert"></div>
         <button id="login-submit" class="login-submit" type="button">보고서 열기 &rarr;</button>
@@ -414,8 +415,13 @@
 
   /* ============================================================
    * 내비게이션 — 앱 키(폴더 idx)·실행 파일명을 URL 에 노출하지 않는다.
-   * 선택한 앱 키/도메인은 localStorage + 메모리에만 두고, 화면 전환은 함수 호출로 한다.
+   * 선택한 앱 키/도메인은 localStorage + 메모리에만 둔다.
    * (URL 로 키를 넘길 수 없게 해서 키 열거·추측 공격과 히스토리/리퍼러 유출을 막는다.)
+   *
+   * 브라우저 뒤로/앞으로 가기는 History API 로 지원한다. 화면마다 history 항목을 쌓되 URL 은 바꾸지 않고,
+   * state 에는 화면 종류(v)와 실행 파일명(f)만 둔다 — 앱 키는 넣지 않는다.
+   *   [도메인 입력 {v:'login'}] → [실행 이력 {v:'history'}] → [실행 상세 {v:'detail', f}]
+   * 이력에서 뒤로 가 도메인 입력 화면에 닿으면 저장된 도메인을 지운다('앱 도메인 변경' 버튼과 같은 동작).
    * ============================================================ */
   var LS_KEY = 'linkcheck-key', LS_DOMAIN = 'linkcheck-domain';
   var nav = { view: 'login', key: null, domain: null, file: null };
@@ -429,6 +435,7 @@
     var c = $('crumb'), parts = [];
     if (nav.view === 'history' || nav.view === 'detail') {
       var name = esc(nav.domain || nav.key || '');
+      parts.push('<a data-go="login">앱 도메인</a>', '<span class="sep">›</span>');
       if (nav.view === 'detail') parts.push('<a data-go="history">' + name + '</a>', '<span class="sep">›</span>', '<span>실행 상세</span>');
       else parts.push('<span>' + name + '</span>');
     }
@@ -453,8 +460,9 @@
     });
   }
   function renderHistory(key, files) {
-    $('pub-meta').innerHTML = '<div class="pubhead"><h2 style="margin:0">' + esc(nav.domain || key) + '</h2>' +
-      '<div class="faint" style="font-size:12px">실행 ' + files.length + '회 · 최신순 · 행을 클릭하면 상세</div></div>';
+    $('pub-meta').innerHTML = '<div class="pubrow"><div class="pubhead"><h2 style="margin:0;overflow-wrap:anywhere">' + esc(nav.domain || key) + '</h2>' +
+      '<div class="faint" style="font-size:12px">실행 ' + files.length + '회 · 최신순 · 행을 클릭하면 상세</div></div>' +
+      '<button class="btn primary" type="button" data-go="login">다른 앱 도메인 입력</button></div>';
     $('run-count').textContent = files.length + ' 회 실행';
     if (!files.length) { $('run-table').innerHTML = '<div class="emptybox">이 앱 도메인의 보고서가 아직 없습니다.</div>'; return; }
     var rows = files.map(function (f) {
@@ -483,6 +491,38 @@
     persistNav();
     showLogin();
   }
+
+  /* ---------- 화면 이동 (history 항목을 쌓거나 되돌린다) ---------- */
+  function cleanUrl() { return location.pathname + location.search; }
+  function histState() { try { return history.state; } catch (e) { return null; } }
+  function pushView(state) { try { history.pushState(state, '', cleanUrl()); } catch (e) {} }
+  function replaceView(state) { try { history.replaceState(state, '', cleanUrl()); } catch (e) {} }
+  function goHistory(key, domain) { pushView({ v: 'history' }); openHistory(key, domain); }
+  function goDetail(file) { if (!nav.key) return; pushView({ v: 'detail', f: file }); openDetail(file); }
+  // 상세 → 이력: 쌓아 둔 항목을 하나 되돌린다 (브라우저 뒤로가기와 같은 결과)
+  function backToHistory() {
+    var st = histState();
+    if (st && st.v === 'detail') history.back();
+    else if (nav.key) openHistory(nav.key, nav.domain);
+  }
+  // 도메인 입력 화면으로: 쌓인 만큼 되돌려 맨 아래 항목으로 간다 → popstate 에서 저장된 도메인을 지운다
+  function changeDomain() {
+    var st = histState();
+    if (st && st.v === 'detail') history.go(-2);
+    else if (st && st.v === 'history') history.back();
+    else { replaceView({ v: 'login' }); openLogin(); }
+  }
+  window.addEventListener('popstate', function (e) {
+    var st = e.state || { v: 'login' };
+    hideStatus();
+    if (st.v === 'detail' && st.f && nav.key) openDetail(st.f);
+    else if (st.v === 'history' && nav.key) openHistory(nav.key, nav.domain);
+    else {
+      // 도메인 입력 화면이거나, 도메인을 지운 뒤 앞으로 가기로 돌아온 경우
+      if (st.v !== 'login') replaceView({ v: 'login' });
+      openLogin();
+    }
+  });
 
   /* =========================================================
    * 상세 렌더링 — 평평한(flat) /3 형식: counts + results[{list,type,name,status,detail}]
@@ -755,12 +795,16 @@
   // 이력 행 클릭 → 상세
   $('run-table').addEventListener('click', function (e) {
     var tr = e.target.closest('tr[data-file]'); if (!tr) return;
-    openDetail(tr.getAttribute('data-file'));
+    goDetail(tr.getAttribute('data-file'));
   });
   $('crumb').addEventListener('click', function (e) {
     var a = e.target.closest('a[data-go]'); if (!a) return;
     e.preventDefault();
-    if (a.getAttribute('data-go') === 'history' && nav.key) openHistory(nav.key, nav.domain);
+    if (a.getAttribute('data-go') === 'history') backToHistory();
+    else if (a.getAttribute('data-go') === 'login') changeDomain();
+  });
+  $('pub-meta').addEventListener('click', function (e) {
+    if (e.target.closest('[data-go="login"]')) changeDomain();
   });
 
   // 테마
@@ -796,19 +840,30 @@
     if (!dom) { loginErr('앱 도메인을 입력하세요.'); return; }
     var key = siteKeyFromDomain(dom);
     if (!key) { loginErr('앱 도메인 형식이 올바르지 않습니다.'); return; }
-    openHistory(key, dom);
+    goHistory(key, dom);
   }
   $('login-submit').addEventListener('click', submitLogin);
   $('login-domain').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitLogin(); } });
-  $('logout-btn').addEventListener('click', openLogin); // '다른 앱'
+  $('logout-btn').addEventListener('click', changeDomain); // '앱 도메인 변경'
 
   /* ---------- 시작 (URL 에 키 노출 없음 — 들어온 해시는 제거하고 localStorage 에서 복원) ---------- */
   (function boot() {
-    if (location.hash) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
     var key = null, domain = null;
     try { key = localStorage.getItem(LS_KEY); domain = localStorage.getItem(LS_DOMAIN); } catch (e) {}
-    if (key) { nav.domain = domain || null; openHistory(key, domain || null); }
-    else openLogin();
+    var st = histState();
+    if (st && st.v) {
+      // 새로고침: 같은 history 항목으로 돌아온 것이므로 항목을 새로 쌓지 않고 그 화면을 다시 그린다
+      replaceView(st); // 들어온 해시가 있으면 제거
+      nav.key = key || null; nav.domain = domain || null;
+      if (st.v === 'detail' && st.f && key) openDetail(st.f);
+      else if (st.v === 'history' && key) openHistory(key, domain || null);
+      else { replaceView({ v: 'login' }); openLogin(); }
+    } else {
+      // 첫 방문: 맨 아래에 도메인 입력 화면을 두고, 저장된 도메인이 있으면 그 위에 이력 화면을 쌓는다
+      replaceView({ v: 'login' });
+      if (key) { nav.domain = domain || null; goHistory(key, domain || null); }
+      else openLogin();
+    }
   })();
 })();
 </script>
