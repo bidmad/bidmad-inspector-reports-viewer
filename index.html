@@ -374,7 +374,7 @@
     var m = /^linkcheck-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(f);
     return m ? (m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5]) : f;
   }
-  function sanitizeKey(s) { var out = String(s).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^_+|_+$/g, ''); return out || 'x'; }
+  function sanitizeKey(s) { var out = String(s).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^[._]+|[._]+$/g, ''); return out || 'x'; }
   // GitHubReportSink.siteKey 와 동일 규칙: serving-bidmad 면 siteId(앞 토큰), 아니면 dom_<도메인>
   function siteKeyFromDomain(d) {
     d = String(d || '').trim();
